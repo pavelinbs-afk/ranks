@@ -1,0 +1,31 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+import os
+
+builder.SetBuildFolder('package')
+
+metamod_folder = builder.AddFolder(os.path.join('addons', 'metamod'))
+bin_folder = builder.AddFolder(os.path.join('addons', 'lr_core', 'bin', 'linuxsteamrt64'))
+configs_folder = builder.AddFolder(os.path.join('addons', 'lr_core', 'configs'))
+translations_folder = builder.AddFolder(os.path.join('addons', 'lr_core', 'translations'))
+
+for cxx_task in MMSPlugin.binaries:
+  if cxx_task.target.platform == 'linux':
+    builder.AddCopy(cxx_task.binary, bin_folder)
+
+vdf_path = os.path.join(builder.sourcePath, 'lr_core.vdf')
+if os.path.exists(vdf_path):
+  builder.AddCopy(vdf_path, metamod_folder)
+
+def copy_required(path, folder):
+  if not os.path.exists(path):
+    raise Exception('lr_core: missing required file for packaging: ' + path)
+  builder.AddCopy(path, folder)
+
+# database.ini itself is gitignored (it holds real credentials) and is never
+# packaged. The example goes in instead — without it the built package has no
+# database config of any kind and the plugin comes up idle on a fresh install.
+for cfg in ['settings.ini', 'tab.ini', 'database.ini.example']:
+  copy_required(os.path.join(builder.sourcePath, 'configs', cfg), configs_folder)
+
+copy_required(os.path.join(builder.sourcePath, 'translations', 'lr_core.phrases.txt'),
+              translations_folder)

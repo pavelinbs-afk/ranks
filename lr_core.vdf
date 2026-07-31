@@ -1,0 +1,5 @@
+"Metamod Plugin"
+{
+	"alias"	"lr_core"
+	"file"	"addons/lr_core/bin/linuxsteamrt64/lr_core"
+}

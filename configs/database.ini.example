@@ -1,0 +1,12 @@
+// Скопируйте этот файл в database.ini и впишите свои доступы к MySQL.
+// НЕ коммитьте database.ini в git — он в .gitignore.
+"Database"
+{
+	"host"		"127.0.0.1"
+	"port"		"3306"
+	"user"		"lr_user"
+	"pass"		"CHANGE_ME"
+	"database"	"levels_ranks"
+	// utf8mb4 (рекомендуется) или utf8
+	"charset"	"utf8mb4"
+}

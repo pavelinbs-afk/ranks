@@ -1,0 +1,17 @@
+# build output
+build_linux/
+build/
+*.o
+*.so
+*.pb.cc
+*.pb.h
+
+# secrets — never commit real DB credentials
+configs/database.ini
+
+# editor / os
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

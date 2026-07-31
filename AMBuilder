@@ -1,0 +1,52 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+import os
+
+for sdk_target in MMSPlugin.sdk_targets:
+  sdk = sdk_target.sdk
+  cxx = sdk_target.cxx
+  if cxx.behavior == 'gcc':
+    cxx.cxxflags += ['-Wno-invalid-offsetof']
+
+  binary = MMSPlugin.HL2Library(builder, cxx, MMSPlugin.plugin_name, sdk)
+
+  # Generated protobuf messages we actually use:
+  #  - usermessages.proto        -> CUserMessageTextMsg (chat/hud printing)
+  #  - networkbasetypes.proto    -> import dependency of usermessages
+  #  - network_connection.proto  -> import dependency of networkbasetypes
+  #  - valveextensions.proto     -> import dependency of networkbasetypes (added in CS2 update 2026-07)
+  binary.custom = [builder.tools.Protoc(protoc = sdk_target.protoc, sources = [
+    os.path.join(sdk['path'], 'common', 'valveextensions.proto'),
+    os.path.join(sdk['path'], 'common', 'network_connection.proto'),
+    os.path.join(sdk['path'], 'common', 'networkbasetypes.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'usermessages.proto'),
+  ])]
+
+  binary.compiler.cxxincludes += [
+    os.path.join(builder.sourcePath, 'src'),
+    os.path.join(builder.sourcePath, 'public'),
+    os.path.join(MMSPlugin.mariadb_prefix, 'include', 'mariadb'),
+  ]
+
+  binary.compiler.postlink += [
+    os.path.join(MMSPlugin.mariadb_prefix, 'lib', 'mariadb', 'libmariadbclient.a'),
+    '/usr/lib/x86_64-linux-gnu/libssl.a',
+    '/usr/lib/x86_64-linux-gnu/libcrypto.a',
+    '-ldl',
+    '-lpthread',
+  ]
+
+  binary.sources += [
+    os.path.join('src', 'lr_core.cpp'),
+    os.path.join('src', 'schema.cpp'),
+    os.path.join('src', 'vtable_finder.cpp'),
+    os.path.join('src', 'chat.cpp'),
+    os.path.join('src', 'config.cpp'),
+    os.path.join('src', 'players.cpp'),
+    os.path.join('src', 'events.cpp'),
+    os.path.join('src', 'db.cpp'),
+    os.path.join('src', 'tab.cpp'),
+    os.path.join('src', 'commands.cpp'),
+  ]
+
+  nodes = builder.Add(binary)
+  MMSPlugin.binaries += [nodes]
