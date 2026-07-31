@@ -19,6 +19,8 @@ static SchemaField s_fCompWins     {"CCSPlayerController", "m_iCompetitiveWins"}
 static SchemaField s_fCompRankType {"CCSPlayerController", "m_iCompetitiveRankType"};
 static SchemaField s_fCompRanking  {"CCSPlayerController", "m_iCompetitiveRanking"};
 
+static float s_flNextRevealAll = 0.0f;
+
 void Tab_SendRevealAll(uint64_t mask)
 {
 	if (!mask || !g_pNetworkMessages || !g_pGameEventSystem)
@@ -80,12 +82,67 @@ static void Tab_SetPersonaLevel(CEntityInstance* pController, int badge)
 	Schema_NetworkStateChanged(pController, offSvc);
 }
 
+// Force-dirty all three competitive-rank fields (even if values are unchanged).
+// Needed after MultiAddonManager finishes mounting: the client may have already
+// failed to open skillgroup{N}.vsvg_c once; a fresh networked write + reveal
+// makes Panorama retry the resource.
+static void Tab_ForceApplyCompetitive(CEntityInstance* pController, int wins, int rankType, int rankValue)
+{
+	int32_t offWins = s_fCompWins.Offset();
+	int32_t offType = s_fCompRankType.Offset();
+	int32_t offRank = s_fCompRanking.Offset();
+	if (offWins < 0 || offType < 0 || offRank < 0)
+		return;
+
+	*reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offWins) = wins;
+	*reinterpret_cast<int8_t*>(reinterpret_cast<uintptr_t>(pController) + offType) = (int8_t)rankType;
+	*reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offRank) = rankValue;
+
+	Schema_NetworkStateChanged(pController, offWins);
+	Schema_NetworkStateChanged(pController, offType);
+	Schema_NetworkStateChanged(pController, offRank);
+}
+
+static bool Tab_IsCustomSkillgroup(int rankValue)
+{
+	// Vanilla MM icons are 1..18. Anything above must come from the workshop addon.
+	return rankValue > 18;
+}
+
+static bool Tab_IconsReady(const PlayerInfo& p, float now)
+{
+	if (g_TabCfg.iconsDelay <= 0.0f)
+		return true;
+	if (p.tabIconsAt <= 0.0f)
+		return false;
+	return now >= p.tabIconsAt;
+}
+
+void Tab_OnPlayerLoaded(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
+	g_Players[iSlot].revealSent = false;
+	g_Players[iSlot].tabIconsApplied = false;
+	g_Players[iSlot].tabIconsAt = now + g_TabCfg.iconsDelay;
+	g_Players[iSlot].tabRefreshUntil = g_Players[iSlot].tabIconsAt + g_TabCfg.iconsRefresh;
+}
+
 void Tab_OnGameFrame()
 {
 	if (!g_TabCfg.enabled || !g_bCoreReady)
 		return;
 
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
+
 	uint64_t revealMask = 0;
+	const bool periodicReveal = (g_TabCfg.revealInterval > 0.0f && now >= s_flNextRevealAll);
+	if (periodicReveal)
+		s_flNextRevealAll = now + g_TabCfg.revealInterval;
 
 	for (int i = 0; i < LR_MAXPLAYERS; i++)
 	{
@@ -123,9 +180,32 @@ void Tab_OnGameFrame()
 			continue;
 		}
 
-		s_fCompWins.SetNetworked<int32_t>(pController, g_TabCfg.wins);
-		s_fCompRankType.SetNetworked<int8_t>(pController, (int8_t)rankType);
-		s_fCompRanking.SetNetworked<int32_t>(pController, rankValue);
+		const bool customIcon = (rankType == 12 && Tab_IsCustomSkillgroup(rankValue));
+		const bool iconsReady = !customIcon || Tab_IconsReady(p, now);
+
+		// Wait for MultiAddonManager to finish the client reconnect/download
+		// cycle before pointing Panorama at skillgroup{N}.vsvg_c. An early miss
+		// is cached by ResourceSystem and stays broken for the rest of the session.
+		if (!iconsReady)
+			continue;
+
+		const bool inRefresh = g_TabCfg.iconsRefresh > 0.0f
+			&& p.tabRefreshUntil > 0.0f
+			&& now < p.tabRefreshUntil;
+		const bool needForce = !p.tabIconsApplied || (inRefresh && periodicReveal);
+
+		if (needForce)
+		{
+			Tab_ForceApplyCompetitive(pController, g_TabCfg.wins, rankType, rankValue);
+			p.tabIconsApplied = true;
+			revealMask |= 1ull << i;
+		}
+		else
+		{
+			s_fCompWins.SetNetworked<int32_t>(pController, g_TabCfg.wins);
+			s_fCompRankType.SetNetworked<int8_t>(pController, (int8_t)rankType);
+			s_fCompRanking.SetNetworked<int32_t>(pController, rankValue);
+		}
 
 		if (!p.revealSent)
 		{
@@ -138,6 +218,9 @@ void Tab_OnGameFrame()
 		if ((buttons & (1ull << IN_SCOREBOARD_BIT)) && !(p.oldButtons & (1ull << IN_SCOREBOARD_BIT)))
 			revealMask |= 1ull << i;
 		p.oldButtons = buttons;
+
+		if (periodicReveal)
+			revealMask |= 1ull << i;
 	}
 
 	Tab_SendRevealAll(revealMask);

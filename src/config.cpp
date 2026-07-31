@@ -176,6 +176,18 @@ void LoadTabConfig()
 	const char* mode = kv->GetString("tab_mode", "competitive");
 	g_TabCfg.mode = (!strcmp(mode, "persona") || !strcmp(mode, "1")) ? 1 : 0;
 
+	V_snprintf(g_TabCfg.workshopId, sizeof(g_TabCfg.workshopId), "%s",
+		kv->GetString("workshop_id", ""));
+	g_TabCfg.iconsDelay     = kv->GetFloat("tab_icons_delay", 12.0f);
+	g_TabCfg.iconsRefresh   = kv->GetFloat("tab_icons_refresh", 20.0f);
+	g_TabCfg.revealInterval = kv->GetFloat("tab_reveal_interval", 2.0f);
+	if (g_TabCfg.iconsDelay < 0.0f)
+		g_TabCfg.iconsDelay = 0.0f;
+	if (g_TabCfg.iconsRefresh < 0.0f)
+		g_TabCfg.iconsRefresh = 0.0f;
+	if (g_TabCfg.revealInterval < 0.0f)
+		g_TabCfg.revealInterval = 0.0f;
+
 	KeyValues* levels = kv->FindKey("Levels", false);
 	if (levels)
 	{

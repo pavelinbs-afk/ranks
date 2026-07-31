@@ -3,6 +3,7 @@
 #include "chat.h"
 #include "db.h"
 #include "schema.h"
+#include "tab.h"
 
 PlayerInfo g_Players[LR_MAXPLAYERS];
 int g_iDBCountPlayers = 0;
@@ -343,6 +344,7 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 			DB_Query(q2);
 		}
 
+		Tab_OnPlayerLoaded(iSlot);
 		ApiFirePlayerLoaded(iSlot, steam64);
 	});
 }

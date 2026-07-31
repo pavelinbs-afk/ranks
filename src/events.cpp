@@ -438,9 +438,18 @@ void Events_OnStartupServer()
 	// Controllers are recreated on a map change, so the scoreboard rank has to
 	// be pushed and revealed again. Without this the TAB icon stays blank until
 	// the player happens to open the scoreboard.
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
 	for (int i = 0; i < LR_MAXPLAYERS; i++)
 	{
 		g_Players[i].revealSent = false;
 		g_Players[i].oldButtons = 0;
+		g_Players[i].tabIconsApplied = false;
+		// Re-arm the mount delay: clients remount addons across changelevel.
+		if (g_Players[i].loaded)
+		{
+			g_Players[i].tabIconsAt = now + g_TabCfg.iconsDelay;
+			g_Players[i].tabRefreshUntil = g_Players[i].tabIconsAt + g_TabCfg.iconsRefresh;
+		}
 	}
 }

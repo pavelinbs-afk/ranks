@@ -350,9 +350,9 @@ CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — предпрос
 
 	uint64_t steam64 = strtoull(args[1], nullptr, 10);
 	int badge = atoi(args[2]);
-	if (badge < 0 || badge > 9999)
+	if (badge < 0 || badge > 999999999)
 	{
-		Msg("[LR] badge value must be 0..9999\n");
+		Msg("[LR] badge value must be 0..999999999 (skillgroup ID)\n");
 		return;
 	}
 
@@ -364,6 +364,13 @@ CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — предпрос
 	}
 
 	g_Players[iSlot].tabOverride = badge;
+	g_Players[iSlot].tabIconsApplied = false;
+	g_Players[iSlot].revealSent = false;
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
+	// Preview immediately: skip mount delay for lr_tab_test.
+	g_Players[iSlot].tabIconsAt = now;
+	g_Players[iSlot].tabRefreshUntil = now + g_TabCfg.iconsRefresh;
 	if (badge)
 		Msg("[LR] tab override for %llu: %i\n", (unsigned long long)steam64, badge);
 	else
@@ -426,10 +433,18 @@ CON_COMMAND_F(lr_reload, "Reload lr_core configs", FCVAR_GAMEDLL)
 
 	// The Ranks list may have changed length: re-derive every level so nothing
 	// keeps an index into the old, longer list.
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
 	for (int i = 0; i < LR_MAXPLAYERS; i++)
 	{
 		if (g_Players[i].loaded)
+		{
 			CheckRank(i, false);
+			g_Players[i].revealSent = false;
+			g_Players[i].tabIconsApplied = false;
+			g_Players[i].tabIconsAt = now + g_TabCfg.iconsDelay;
+			g_Players[i].tabRefreshUntil = g_Players[i].tabIconsAt + g_TabCfg.iconsRefresh;
+		}
 	}
 
 	Msg("[LR] configs reloaded\n");

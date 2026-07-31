@@ -12,6 +12,7 @@
 #include "config.h"
 #include "db.h"
 #include "events.h"
+#include "imultiaddonmanager.h"
 #include "players.h"
 #include "tab.h"
 #include "vtable_finder.h"
@@ -283,6 +284,45 @@ bool LRCorePlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, 
 	return true;
 }
 
+static void Tab_RegisterWorkshopAddon()
+{
+	if (!g_TabCfg.workshopId[0])
+		return;
+
+	IMultiAddonManager* pMam = (IMultiAddonManager*)g_SMAPI->MetaFactory(
+		MULTIADDONMANAGER_INTERFACE, nullptr, nullptr);
+	if (!pMam)
+	{
+		LR_Log("workshop_id=%s set, but MultiAddonManager is not loaded — "
+			"clients will not receive skillgroup SVGs", g_TabCfg.workshopId);
+		return;
+	}
+
+	// Prefer mm_extra_addons (server-mounted): FaceitLevels / working setups use
+	// this path. Client-only addons alone leave Refreshing addons () empty and
+	// race with Panorama looking up skillgroup{N}.vsvg_c.
+	pMam->AddAddon(g_TabCfg.workshopId, false);
+	if (!pMam->IsAddonMounted(g_TabCfg.workshopId))
+	{
+		if (pMam->HasUGCConnection())
+		{
+			pMam->DownloadAddon(g_TabCfg.workshopId, /*bImportant=*/true, /*bForce=*/false);
+			LR_Log("requested MultiAddonManager download+mount of %s (map will reload when ready)",
+				g_TabCfg.workshopId);
+		}
+		else
+		{
+			LR_Log("MultiAddonManager has no UGC connection yet; ensure mm_extra_addons \"%s\" "
+				"and run mm_download_addon %s after GC connects",
+				g_TabCfg.workshopId, g_TabCfg.workshopId);
+		}
+	}
+	else
+	{
+		LR_Log("workshop addon %s already mounted via MultiAddonManager", g_TabCfg.workshopId);
+	}
+}
+
 void LRCorePlugin::AllPluginsLoaded()
 {
 	g_bConfigsOk = LoadAllConfigs();
@@ -298,6 +338,8 @@ void LRCorePlugin::AllPluginsLoaded()
 		g_bConfigsOk = false;
 		return;
 	}
+
+	Tab_RegisterWorkshopAddon();
 
 	DB_Start(g_DBConfig);
 	DB_Bootstrap();

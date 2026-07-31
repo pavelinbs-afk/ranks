@@ -86,17 +86,23 @@ cp addons/lr_core/configs/database.ini.example addons/lr_core/configs/database.i
 
 ### Кастомные иконки рангов в TAB
 
-Клиент рисует `panorama/images/icons/skillgroups/skillgroup{N}.svg` из своих
-файлов, поэтому свои бейджи надо доставить ему воркшоп-аддоном — FastDL в CS2
-не работает. Исходники лежат в `ranks/`, соответствие «файл → ID → уровень»
-и требования к SVG описаны в [ranks/README.md](ranks/README.md).
+Клиент рисует `panorama/images/icons/skillgroups/skillgroup{N}.svg` из
+воркшоп-аддона (FastDL в CS2 нет). Исходники и инструкция по публикации —
+в [ranks/README.md](ranks/README.md).
 
-Раздачу аддона клиентам делает [MultiAddonManager](https://github.com/Source2ZE/MultiAddonManager)
-(`mm_extra_addons "<workshop_id>"`), сам `lr_core` только пишет число в
-`m_iCompetitiveRanking`. Проверка подобранных ID — `lr_tab_test <steamid64> <value>`.
+Раздачу делает [MultiAddonManager](https://github.com/Source2ZE/MultiAddonManager).
+**Обязательно** `mm_extra_addons "<workshop_id>"` (не только
+`mm_client_extra_addons`). Тот же ID укажите в `tab.ini` → `workshop_id` —
+плагин зарегистрирует аддон через API MAM.
 
-Если не хотите заставлять игроков что-то качать — поставьте `tab_type 11`
-и мапьте уровни на ванильные 1..18.
+Плагин:
+- ждёт `tab_icons_delay` секунд после захода, прежде чем писать кастомные ID
+  (>18), чтобы клиент успел смонтировать VPK;
+- периодически шлёт `ServerRankRevealAll` и короткое время force-dirty'ит поля
+  ранга (иначе Panorama кэширует `ERROR_FILEOPEN` на `skillgroupN.vsvg_c`).
+
+Проверка ID: `lr_tab_test <steamid64> <value>`. Без кастомных иконок —
+`tab_type 11` и маппинг на ванильные 1..18.
 
 Проверка:
 

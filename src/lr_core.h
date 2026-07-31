@@ -100,6 +100,12 @@ struct LRTabSettings
 	int  aboveType;
 	int  aboveValue;
 	bool aboveUseExp;
+
+	// Workshop skillgroup icons (MultiAddonManager)
+	char workshopId[32];       // e.g. "3772685382"; empty = do not touch MAM
+	float iconsDelay;          // seconds after load before writing custom skillgroup IDs
+	float iconsRefresh;        // seconds of forced re-dirty after first apply (0 = off)
+	float revealInterval;      // periodic ServerRankRevealAll to all players (0 = off)
 };
 
 // ---------------------------------------------------------------------------
@@ -139,6 +145,12 @@ struct PlayerInfo
 	uint64_t oldButtons = 0;   // scoreboard button edge detection
 	bool revealSent = false;   // ServerRankRevealAll sent after load
 	int  tabOverride = 0;      // lr_tab_test preview badge (0 = off)
+
+	// Workshop SVG icons: wait for MultiAddonManager reconnect/mount, then
+	// force-dirty fields for a short window so Panorama retries the resource.
+	float tabIconsAt = 0.0f;       // curtime when custom skillgroup IDs may be written
+	float tabRefreshUntil = 0.0f;  // curtime until which we keep force-dirtying
+	bool  tabIconsApplied = false;
 
 	void Reset() { *this = PlayerInfo(); }
 };
