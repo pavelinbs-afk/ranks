@@ -19,9 +19,8 @@ panorama/images/icons/skillgroups/skillgroup{N}.vsvg_c
 
 ## Как правильно собрать и залить аддон
 
-Ошибка `[ResourceSystem] Failed loading ... skillgroup50.vsvg_c (ERROR_FILEOPEN)`
-или **чёрные одинаковые силуэты** в Asset Browser почти всегда значат:
-скомпилированный `.vsvg` пустой/битый (SVG отвергнут компилятором Tools).
+Ошибка `Unable to parse SVG '...skillgroupN.vsvg'` / чёрные силуэты в Asset Browser
+значат: SVG несовместим с Panorama (Inkscape-фичи) или скомпилированный `.vsvg` битый.
 
 ### Подготовка файлов
 
@@ -57,25 +56,25 @@ mm_extra_addons "3772685382"
 
 и `mm_download_addon 3772685382` + смена карты.
 
-### Ограничения SVG для CS2
+### Формат SVG для CS2 / Panorama
 
-Ванильные ранги — **строго `32×13`** (`viewBox="0 0 32 13"`).
+**Сжимать в `32×13` не нужно** — сохраняем исходный `viewBox` оригинала.
 
-Inkscape-экспорт в `mm` / `166×98` Tools превращает в **чёрные щиты**. Дополнительно:
-контур `<path stroke="...">` без `fill` по стандарту SVG заливается **чёрным** —
-это и есть силуэт щита в Asset Browser.
+Но сырой Inkscape-экспорт Panorama **не парсит** (`Unable to parse SVG`). Нужен
+упрощённый SVG:
 
-Перерисовка оригиналов в CS2-формат:
+- абсолютные команды `M/C/L/Z` (без relative `m/c/l`);
+- transform’ы запечены в координаты;
+- градиенты → сплошные цвета;
+- без `mm`, `xlink:href` на градиентах, `mix-blend-mode`;
+- у stroke-only контуров нет чёрной заливки по умолчанию (они пропускаются).
+
+Оригиналы Inkscape — в `ranks/_backup_before_32x13/`. Пересобрать рабочие копии:
 
 ```bash
 pip install svgelements
-python ranks/redraw_for_cs2.py
+python ranks/prepare_for_cs2.py
 ```
 
-Оригиналы Inkscape — в `ranks/_backup_before_32x13/`. Скрипт:
-запекает transform’ы, переводит path’ы в абсолютные `M/C/L/Z`,
-градиенты → сплошные цвета, `viewBox="0 0 32 13"`.
-
-Проверка: в Asset Browser бейдж должен быть **цветным щитом с цифрой**
-(не серый контур и не чёрный силуэт).
+Проверка: в Asset Browser бейдж должен быть **цветным щитом с цифрой**.
 Перед копированием удали кэш в `game/csgo_addons/<addon>/panorama/images/icons/skillgroups/`.

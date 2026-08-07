@@ -1,4 +1,4 @@
-﻿#include "lr_core.h"
+#include "lr_core.h"
 
 #include <map>
 #include <vector>
@@ -284,9 +284,24 @@ bool LRCorePlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, 
 	return true;
 }
 
-static void Tab_RegisterWorkshopAddon()
+// Retried from AllPluginsLoaded and every StartupServer until mounted.
+static bool g_bWorkshopAddonOk = false;
+static bool g_bWorkshopAddonLoggedEmpty = false;
+
+static void Tab_RegisterWorkshopAddon(bool bFromMapStart)
 {
 	if (!g_TabCfg.workshopId[0])
+	{
+		if (!g_bWorkshopAddonLoggedEmpty)
+		{
+			LR_Log("tab.ini workshop_id is empty — skillgroup50+ will not be delivered "
+				"(set workshop_id and mm_extra_addons)");
+			g_bWorkshopAddonLoggedEmpty = true;
+		}
+		return;
+	}
+
+	if (g_bWorkshopAddonOk)
 		return;
 
 	IMultiAddonManager* pMam = (IMultiAddonManager*)g_SMAPI->MetaFactory(
@@ -298,28 +313,38 @@ static void Tab_RegisterWorkshopAddon()
 		return;
 	}
 
-	// Prefer mm_extra_addons (server-mounted): FaceitLevels / working setups use
-	// this path. Client-only addons alone leave Refreshing addons () empty and
-	// race with Panorama looking up skillgroup{N}.vsvg_c.
-	pMam->AddAddon(g_TabCfg.workshopId, false);
-	if (!pMam->IsAddonMounted(g_TabCfg.workshopId))
+	// Server-mounted list (shows up as Refreshing addons (ID)). Client-only
+	// addons leave Refreshing addons () empty and race Panorama FILEOPEN.
+	const bool added = pMam->AddAddon(g_TabCfg.workshopId, /*bRefresh=*/true);
+	const bool mounted = pMam->IsAddonMounted(g_TabCfg.workshopId);
+	const bool ugc = pMam->HasUGCConnection();
+
+	if (mounted)
 	{
-		if (pMam->HasUGCConnection())
-		{
-			pMam->DownloadAddon(g_TabCfg.workshopId, /*bImportant=*/true, /*bForce=*/false);
-			LR_Log("requested MultiAddonManager download+mount of %s (map will reload when ready)",
-				g_TabCfg.workshopId);
-		}
-		else
-		{
-			LR_Log("MultiAddonManager has no UGC connection yet; ensure mm_extra_addons \"%s\" "
-				"and run mm_download_addon %s after GC connects",
-				g_TabCfg.workshopId, g_TabCfg.workshopId);
-		}
+		g_bWorkshopAddonOk = true;
+		LR_Log("workshop addon %s mounted via MultiAddonManager (AddAddon=%s)",
+			g_TabCfg.workshopId, added ? "ok" : "false");
+		return;
+	}
+
+	if (ugc)
+	{
+		pMam->DownloadAddon(g_TabCfg.workshopId, /*bImportant=*/true, /*bForce=*/false);
+		LR_Log("requested MultiAddonManager download+mount of %s "
+			"(AddAddon=%s, map may reload when ready). Also set mm_extra_addons \"%s\"",
+			g_TabCfg.workshopId, added ? "ok" : "false", g_TabCfg.workshopId);
+	}
+	else if (bFromMapStart)
+	{
+		LR_Log("waiting for MultiAddonManager UGC (Steam) to mount %s — "
+			"put mm_extra_addons \"%s\" in multiaddonmanager.cfg",
+			g_TabCfg.workshopId, g_TabCfg.workshopId);
 	}
 	else
 	{
-		LR_Log("workshop addon %s already mounted via MultiAddonManager", g_TabCfg.workshopId);
+		LR_Log("MultiAddonManager has no UGC yet for %s; will retry on map start. "
+			"Ensure mm_extra_addons \"%s\"",
+			g_TabCfg.workshopId, g_TabCfg.workshopId);
 	}
 }
 
@@ -339,7 +364,9 @@ void LRCorePlugin::AllPluginsLoaded()
 		return;
 	}
 
-	Tab_RegisterWorkshopAddon();
+	g_bWorkshopAddonOk = false;
+	g_bWorkshopAddonLoggedEmpty = false;
+	Tab_RegisterWorkshopAddon(/*bFromMapStart=*/false);
 
 	DB_Start(g_DBConfig);
 	DB_Bootstrap();
@@ -456,6 +483,8 @@ void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandCont
 
 void LRCorePlugin::Hook_StartupServer(const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*)
 {
+	// Steam/UGC is often ready only after the first map — retry ranks workshop mount.
+	Tab_RegisterWorkshopAddon(/*bFromMapStart=*/true);
 	Events_OnStartupServer();
 }
 

@@ -5,7 +5,7 @@ build/
 *.so
 *.pb.cc
 *.pb.h
-
+ranks/
 # secrets — never commit real DB credentials
 configs/database.ini
 
