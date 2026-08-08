@@ -15,4 +15,5 @@ configs/database.ini
 *.swp
 Thumbs.db
 .DS_Store
-ranks/
+ranks/*.svg
+ranks/backup_before_32x13/
