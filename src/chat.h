@@ -9,7 +9,7 @@ bool LoadPhrases();
 // Phrase by key; returns the key itself if missing (so problems are visible).
 const char* Phrase(const char* key);
 
-// Chat print with [LR] prefix. Slot -1 = server console.
+// Chat print with [Статистика] → prefix. Slot -1 = server console.
 void LRPrint(int iSlot, const char* fmt, ...);
 void LRPrintAll(const char* fmt, ...);
 
@@ -20,8 +20,10 @@ void LRPrintAllPhrase(const char* phraseKey, ...);
 // Raw phrase text (before chat color bytes) — for center HTML.
 const char* PhraseRaw(const char* key);
 
-// Center HUD (HTML). Only !rank stays in chat; other commands use these.
+// Center HUD (HTML) with [Статистика] → prefix.
 void LRCenterHtml(int iSlot, const char* html, float durationSec = 5.0f);
+void LRCenterStop(int iSlot);
+void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey = "Prefix");
 void LRCenterBody(int iSlot, const char* htmlBody, float durationSec = 5.0f);
 void LRCenterPhrase(int iSlot, const char* phraseKey, ...);
 void LRCenterFormat(int iSlot, float durationSec, const char* fmt, ...);

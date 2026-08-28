@@ -24,7 +24,7 @@ struct TopRow
 	char name[128];
 	int  level = 0;
 	int  exp = 0;
-	float hours = 0.0f;
+	int64_t playtimeSec = 0;
 };
 
 struct MenuState
@@ -43,8 +43,8 @@ static MenuState s_Menu[LR_MAXPLAYERS];
 
 static const float kMenuDuration = 45.0f;
 static const float kMenuRefresh = 0.02f;
-static const int kItemsPerPage = 4; // как AdminPlugin (perPage = 4)
-static const int kMainPages = 2;
+// Центральный HUD CS2: заголовок + до 5 пунктов + футер (~7 строк). Больше — обрезается снизу.
+static const int kListItemsPerPage = 5;
 static const int kMyStatsPages = 2;
 
 static int ClampPage(int page, int totalPages)
@@ -107,6 +107,7 @@ static void MenuClose(int iSlot)
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return;
 	s_Menu[iSlot] = MenuState();
+	LRCenterStop(iSlot);
 }
 
 static void MenuShow(int iSlot, const char* html)
@@ -117,12 +118,15 @@ static void MenuShow(int iSlot, const char* html)
 	CGlobalVars* gv = GetGlobals();
 	float now = gv ? gv->curtime : 0.0f;
 
-	V_strncpy(s_Menu[iSlot].html, html, sizeof(s_Menu[iSlot].html));
+	char wrapped[4096];
+	LRWrapCenterHtml(wrapped, sizeof(wrapped), html);
+
+	V_strncpy(s_Menu[iSlot].html, wrapped, sizeof(s_Menu[iSlot].html));
 	s_Menu[iSlot].until = now + kMenuDuration;
 	s_Menu[iSlot].nextRefresh = now;
 	s_Menu[iSlot].steam64 = g_Players[iSlot].steam64;
 
-	LRCenterHtml(iSlot, html, kMenuDuration);
+	LRCenterHtml(iSlot, wrapped, kMenuDuration);
 }
 
 static void AppendTitle(std::string& html, const char* title)
@@ -173,36 +177,28 @@ static void ShowMainMenu(int iSlot)
 	if (pl.level > rankCount) pl.level = rankCount;
 
 	MenuState& m = s_Menu[iSlot];
-	m.page = ClampPage(m.page, kMainPages);
-	int page = m.page;
+	m.page = 0;
 
-	char rankLine[128], expLine[128], placeLine[128];
+	char rankLine[128], expLine[128];
 	V_snprintf(rankLine, sizeof(rankLine), "Звание: Уровень %i", pl.level);
 
 	if (pl.level < rankCount)
-		V_snprintf(expLine, sizeof(expLine), "Опыт: %i / %i", pl.st.exp, ExpForNextLevel(pl.level));
+		V_snprintf(expLine, sizeof(expLine), "Опыт: %i / %i | Место: %i из %i",
+			pl.st.exp, ExpForNextLevel(pl.level), pl.posTop, g_iDBCountPlayers);
 	else
-		V_snprintf(expLine, sizeof(expLine), "Опыт: %i", pl.st.exp);
-
-	V_snprintf(placeLine, sizeof(placeLine), "Место: %i из %i", pl.posTop, g_iDBCountPlayers);
+		V_snprintf(expLine, sizeof(expLine), "Опыт: %i | Место: %i из %i",
+			pl.st.exp, pl.posTop, g_iDBCountPlayers);
 
 	std::string html;
 	AppendTitle(html, "Меню рангов");
 
-	if (page == 0)
-	{
-		AppendInfoLine(html, 1, rankLine);
-		AppendInfoLine(html, 2, expLine);
-		AppendInfoLine(html, 3, placeLine);
-		AppendActionLine(html, 4, "Моя статистика");
-		AppendActionLine(html, 5, "TOP 10");
-	}
-	else
-	{
-		AppendActionLine(html, 1, "Все ранги");
-	}
+	AppendInfoLine(html, 1, rankLine);
+	AppendInfoLine(html, 2, expLine);
+	AppendActionLine(html, 3, "Моя статистика");
+	AppendActionLine(html, 4, "TOP 10");
+	AppendActionLine(html, 5, "Все ранги");
 
-	AppendNavFooter(html, page, kMainPages, false, true, "Выход");
+	AppendNavFooter(html, 0, 1, false, false, "Выход");
 
 	m.screen = MenuScreen::Main;
 	m.backScreen = MenuScreen::None;
@@ -316,13 +312,12 @@ static void ShowSessionMenu(int iSlot, MenuScreen back)
 	FormatDuration(SessionTime(iSlot), timeStr, sizeof(timeStr));
 	V_snprintf(kdStr, sizeof(kdStr), "%.2f", StatKD(p.sess.kills, p.sess.deaths));
 
-	char l1[128], l2[128], l3[128], l4[128], l5[128], l6[128];
+	char l1[128], l2[128], l3[128], l4[128], l5[128];
 	V_snprintf(l1, sizeof(l1), "Время: %s", timeStr);
 	V_snprintf(l2, sizeof(l2), "Опыт: %s", expStr);
-	V_snprintf(l3, sizeof(l3), "Убийств: %i", p.sess.kills);
-	V_snprintf(l4, sizeof(l4), "Смертей: %i", p.sess.deaths);
-	V_snprintf(l5, sizeof(l5), "Хедшотов: %i", p.sess.headshots);
-	V_snprintf(l6, sizeof(l6), "K/D: %s | место: %s", kdStr, posStr);
+	V_snprintf(l3, sizeof(l3), "Убийств: %i | Смертей: %i", p.sess.kills, p.sess.deaths);
+	V_snprintf(l4, sizeof(l4), "Хедшотов: %i", p.sess.headshots);
+	V_snprintf(l5, sizeof(l5), "K/D: %s | место: %s", kdStr, posStr);
 
 	std::string html;
 	if (back == MenuScreen::MyStats)
@@ -334,7 +329,6 @@ static void ShowSessionMenu(int iSlot, MenuScreen back)
 	AppendInfoLine(html, 3, l3);
 	AppendInfoLine(html, 4, l4);
 	AppendInfoLine(html, 5, l5);
-	AppendInfoLine(html, 6, l6);
 	AppendNavFooterSimple(html, back != MenuScreen::None, "Выход");
 
 	s_Menu[iSlot].screen = MenuScreen::Session;
@@ -350,15 +344,15 @@ static void ShowAllRanksMenu(int iSlot)
 	if (rankCount < 1)
 		return;
 
-	int totalPages = TotalPages(rankCount, kItemsPerPage);
+	int totalPages = TotalPages(rankCount, kListItemsPerPage);
 	s_Menu[iSlot].page = ClampPage(s_Menu[iSlot].page, totalPages);
 	int page = s_Menu[iSlot].page;
-	int start = page * kItemsPerPage;
+	int start = page * kListItemsPerPage;
 
 	std::string html;
 	AppendTitle(html, "Все ранги");
 
-	for (int i = 0; i < kItemsPerPage; i++)
+	for (int i = 0; i < kListItemsPerPage; i++)
 	{
 		int idx = start + i;
 		if (idx >= rankCount)
@@ -371,7 +365,7 @@ static void ShowAllRanksMenu(int iSlot)
 		if (level == 1)
 			V_snprintf(line, sizeof(line), "Уровень %i", level);
 		else
-			V_snprintf(line, sizeof(line), "[%i] Уровень %i", g_Cfg.ranksExp[idx - 1], level);
+			V_snprintf(line, sizeof(line), "[%i] Уровень %i", g_Cfg.ranksExp[idx], level);
 
 		if (achieved)
 			AppendGreyLine(html, i + 1, line);
@@ -391,9 +385,9 @@ static void ShowTopMenu(int iSlot)
 	MenuState& m = s_Menu[iSlot];
 	bool byTime = m.screen == MenuScreen::TopTime;
 	int total = (int)m.topRows.size();
-	int totalPages = TotalPages(total, kItemsPerPage);
+	int totalPages = TotalPages(total, kListItemsPerPage);
 	m.page = ClampPage(m.page, totalPages);
-	int start = m.page * kItemsPerPage;
+	int start = m.page * kListItemsPerPage;
 
 	std::string html;
 	if (byTime)
@@ -401,7 +395,7 @@ static void ShowTopMenu(int iSlot)
 	else
 		AppendTitle(html, "TOP 10 | по очкам опыта");
 
-	for (int i = 0; i < kItemsPerPage; i++)
+	for (int i = 0; i < kListItemsPerPage; i++)
 	{
 		int idx = start + i;
 		if (idx >= total)
@@ -414,12 +408,14 @@ static void ShowTopMenu(int iSlot)
 		char line[512];
 		if (byTime)
 		{
-			V_snprintf(line, sizeof(line), "%i - ( %.1f ч. ) - %s",
-				idx + 1, row.hours, safeName);
+			char timeStr[32];
+			FormatDuration(row.playtimeSec, timeStr, sizeof(timeStr));
+			V_snprintf(line, sizeof(line), "%i — %s — %s",
+				idx + 1, timeStr, safeName);
 		}
 		else
 		{
-			V_snprintf(line, sizeof(line), "%i - ( %i ) - %s",
+			V_snprintf(line, sizeof(line), "%i — %i — %s",
 				idx + 1, row.exp, safeName);
 		}
 		AppendInfoLine(html, i + 1, line);
@@ -434,11 +430,11 @@ static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 	char q[512];
 	if (byTime)
 		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `playtime` / 3600.0 FROM `%s` WHERE `lastconnect` ORDER BY `playtime` DESC LIMIT %i;",
+			"SELECT `name`, `playtime` FROM `%s` WHERE `lastconnect` ORDER BY `playtime` DESC LIMIT %i;",
 			g_Cfg.tableName, g_Cfg.topCount);
 	else
 		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `rank`, `value` FROM `%s` WHERE `lastconnect` ORDER BY `rank` DESC, `value` DESC LIMIT %i;",
+			"SELECT `name`, `rank`, `value` FROM `%s` WHERE `lastconnect` ORDER BY `value` DESC, `rank` DESC LIMIT %i;",
 			g_Cfg.tableName, g_Cfg.topCount);
 
 	uint64_t steam64 = g_Players[iSlot].steam64;
@@ -454,7 +450,7 @@ static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 				TopRow row;
 				V_strncpy(row.name, r.Get(i, 0), sizeof(row.name));
 				if (byTime)
-					row.hours = (float)r.GetFloat(i, 1);
+					row.playtimeSec = r.GetInt(i, 1);
 				else
 				{
 					row.level = r.GetInt(i, 1);
@@ -518,15 +514,7 @@ bool Menu_TryHandleKey(int iSlot, int key)
 
 	if (key == 7)
 	{
-		if (m.screen == MenuScreen::Main)
-		{
-			if (m.page > 0)
-			{
-				m.page--;
-				ShowMainMenu(iSlot);
-			}
-		}
-		else if (m.screen == MenuScreen::AllRanks || m.screen == MenuScreen::TopExp || m.screen == MenuScreen::TopTime)
+		if (m.screen == MenuScreen::AllRanks || m.screen == MenuScreen::TopExp || m.screen == MenuScreen::TopTime)
 		{
 			if (m.page > 0)
 			{
@@ -538,7 +526,7 @@ bool Menu_TryHandleKey(int iSlot, int key)
 			}
 			else if (m.backScreen == MenuScreen::Main)
 			{
-				m.page = (m.screen == MenuScreen::AllRanks) ? 1 : 0;
+				m.page = 0;
 				ShowMainMenu(iSlot);
 			}
 			else
@@ -582,16 +570,6 @@ bool Menu_TryHandleKey(int iSlot, int key)
 
 	if (key == 8)
 	{
-		if (m.screen == MenuScreen::Main)
-		{
-			if (m.page + 1 < kMainPages)
-			{
-				m.page++;
-				ShowMainMenu(iSlot);
-			}
-			return true;
-		}
-
 		if (m.screen == MenuScreen::MyStats)
 		{
 			if (m.page + 1 < kMyStatsPages)
@@ -605,7 +583,7 @@ bool Menu_TryHandleKey(int iSlot, int key)
 		if (m.screen == MenuScreen::AllRanks)
 		{
 			int rankCount = (int)g_Cfg.ranksExp.size();
-			int totalPages = TotalPages(rankCount, kItemsPerPage);
+			int totalPages = TotalPages(rankCount, kListItemsPerPage);
 			if (m.page + 1 < totalPages)
 			{
 				m.page++;
@@ -614,7 +592,7 @@ bool Menu_TryHandleKey(int iSlot, int key)
 		}
 		else if (m.screen == MenuScreen::TopExp || m.screen == MenuScreen::TopTime)
 		{
-			int totalPages = TotalPages((int)m.topRows.size(), kItemsPerPage);
+			int totalPages = TotalPages((int)m.topRows.size(), kListItemsPerPage);
 			if (m.page + 1 < totalPages)
 			{
 				m.page++;
@@ -627,17 +605,14 @@ bool Menu_TryHandleKey(int iSlot, int key)
 	switch (m.screen)
 	{
 		case MenuScreen::Main:
-			if (m.page == 0)
+			if (key == 3)
 			{
-				if (key == 4)
-				{
-					m.page = 0;
-					ShowMyStatsMenu(iSlot, MenuScreen::Main);
-				}
-				else if (key == 5)
-					FetchTopThenShow(iSlot, false, MenuScreen::Main);
+				m.page = 0;
+				ShowMyStatsMenu(iSlot, MenuScreen::Main);
 			}
-			else if (m.page == 1 && key == 1)
+			else if (key == 4)
+				FetchTopThenShow(iSlot, false, MenuScreen::Main);
+			else if (key == 5)
 			{
 				m.page = 0;
 				ShowAllRanksMenu(iSlot);

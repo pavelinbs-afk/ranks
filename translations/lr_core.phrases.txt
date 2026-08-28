@@ -2,8 +2,8 @@
 {
 	"Prefix"
 	{
-		"ru"	"{YELLOW}[Опыт] →{DEFAULT}"
-		"en"	"{YELLOW}[Exp] →{DEFAULT}"
+		"ru"	"{YELLOW}[Статистика] →{DEFAULT}"
+		"en"	"{YELLOW}[Stats] →{DEFAULT}"
 	}
 	"Kill"
 	{
@@ -232,8 +232,8 @@
 	}
 	"SpawnHintCommands"
 	{
-		"ru"	"Команды: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — по центру<br/>{GREEN}!rank{DEFAULT} — статистика в чат"
-		"en"	"Commands: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — center HUD<br/>{GREEN}!rank{DEFAULT} — stats in chat"
+		"ru"	"Команды: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — меню по центру | {GREEN}!rank{DEFAULT} — статистика в чат"
+		"en"	"Commands: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — center menu | {GREEN}!rank{DEFAULT} — stats in chat"
 	}
 	"SpawnHintRank"
 	{

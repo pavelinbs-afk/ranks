@@ -271,7 +271,7 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 		QueueWalletCoins(iSlot, scaledCoins, coinGrantKind, idem);
 	}
 
-	if (g_Cfg.showUsualMessage == 1 && phraseKey && (applied != 0 || scaledCoins > 0))
+	if (g_Cfg.showUsualMessage && bypassRestrictions && phraseKey && (applied != 0 || scaledCoins > 0))
 	{
 		if (applied != 0)
 		{
@@ -286,7 +286,7 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 				V_snprintf(coinPart, sizeof(coinPart), " и {GOLD}%s{DEFAULT} коинов", sCoins);
 			}
 
-			LRCenterPhrase(iSlot, phraseKey, sDelta, coinPart, p.st.exp);
+			LRPrintPhrase(iSlot, phraseKey, sDelta, coinPart, p.st.exp);
 		}
 		else if (scaledCoins > 0)
 		{
@@ -297,8 +297,19 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 				coinPhrase = "CoinMultiKill";
 			else if (coinGrantKind && !strcmp(coinGrantKind, "lr_mvp"))
 				coinPhrase = "CoinMvp";
-			LRCenterPhrase(iSlot, coinPhrase, sCoins);
+			LRPrintPhrase(iSlot, coinPhrase, sCoins);
 		}
+	}
+	else if (g_Cfg.showUsualMessage && !bypassRestrictions && scaledCoins > 0)
+	{
+		char sCoins[16];
+		V_snprintf(sCoins, sizeof(sCoins), "+%i", scaledCoins);
+		const char* coinPhrase = "CoinInterval";
+		if (coinGrantKind && !strcmp(coinGrantKind, "lr_multikill"))
+			coinPhrase = "CoinMultiKill";
+		else if (coinGrantKind && !strcmp(coinGrantKind, "lr_mvp"))
+			coinPhrase = "CoinMvp";
+		LRPrintPhrase(iSlot, coinPhrase, sCoins);
 	}
 
 	return scaledDelta != 0 || scaledCoins > 0;
@@ -323,11 +334,11 @@ bool GrantIntervalCoins(int iSlot)
 
 	QueueWalletCoins(iSlot, amount, "lr_interval", idem);
 
-	if (g_Cfg.showUsualMessage == 1)
+	if (g_Cfg.showUsualMessage)
 	{
 		char sDelta[16];
 		V_snprintf(sDelta, sizeof(sDelta), "+%i", amount);
-		LRCenterPhrase(iSlot, "CoinInterval", sDelta);
+		LRPrintPhrase(iSlot, "CoinInterval", sDelta);
 	}
 
 	return true;

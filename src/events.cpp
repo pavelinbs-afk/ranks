@@ -107,13 +107,10 @@ int ScaleExpByPlayerCount(int delta)
 		return 0;
 
 	int humans = CountHumansOnTeams();
-	if (humans < 3)
+	if (humans < g_Cfg.minPlayers)
 		return 0;
-	if (humans >= g_Cfg.minPlayers)
-		return delta;
 
-	// 3–4 игрока: по 1 опыту за событие (или −1 за штраф).
-	return delta > 0 ? 1 : -1;
+	return delta;
 }
 
 static void TryPayKillStreak(int iSlot)
@@ -228,16 +225,22 @@ static void OnRoundEnd(IGameEvent* event)
 			if (IsPawnAlive(i))
 				g_Players[i].killStreak = 0;
 
-			if (g_Cfg.showUsualMessage == 2 && g_Players[i].loaded)
+			if (g_Players[i].loaded)
 			{
-				int re = g_Players[i].roundExp;
-				if (re > 0)
-					LRCenterPhrase(i, "RoundExpResultGive", re);
-				else if (re < 0)
-					LRCenterPhrase(i, "RoundExpResultTake", -re);
-				else
-					LRCenterPhrase(i, "RoundExpResultNothing");
-				LRCenterPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
+				if (g_Cfg.showUsualMessage)
+				{
+					int re = g_Players[i].roundExp;
+					if (re > 0)
+					{
+						LRPrintPhrase(i, "RoundExpResultGive", re);
+						LRPrintPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
+					}
+					else if (re < 0)
+					{
+						LRPrintPhrase(i, "RoundExpResultTake", -re);
+						LRPrintPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
+					}
+				}
 				g_Players[i].roundExp = 0;
 			}
 		}
@@ -334,7 +337,10 @@ public:
 				if (!strcmp(name, "round_start"))
 				{
 					for (int i = 0; i < LR_MAXPLAYERS; i++)
+					{
 						g_Players[i].killStreak = 0;
+						g_Players[i].roundExp = 0;
+					}
 					CheckAllowStatistic(true);
 				}
 				else if (!strcmp(name, "round_end"))

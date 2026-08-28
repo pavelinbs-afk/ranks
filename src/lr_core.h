@@ -59,7 +59,7 @@ struct LRSettings
 	int  minPlayers;       // humans for full exp; 3-4 → 1 exp, <3 → 0
 	bool showResetStats;
 	int  resetCooldown;
-	int  showUsualMessage; // 0/1/2
+	int  showUsualMessage; // 0 = off; non-zero = round-end exp summary + coin notices
 	bool showLevelUp, showLevelDown, showAllLevelUp, showAllLevelDown;
 	bool showRankMessage;
 	int  topCount;

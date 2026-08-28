@@ -389,16 +389,23 @@ static void FormatPhraseHtmlBody(char* out, size_t outSize, const char* phraseKe
 	va_end(copy);
 }
 
-static void WrapCenterHtml(char* out, size_t outSize, const char* body)
+static void WrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
 {
-	std::string prefix = PhraseRaw("Prefix");
+	std::string prefix = PhraseRaw(prefixKey);
 	ReplaceHtmlColors(prefix);
 	V_snprintf(out, outSize, "%s<br/>%s", prefix.c_str(), body);
 }
 
-static void FireCenterHtml(int iSlot, const char* html)
+void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
 {
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !html || !*html)
+	if (!prefixKey)
+		prefixKey = "Prefix";
+	WrapCenterHtml(out, outSize, body ? body : "", prefixKey);
+}
+
+static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenterHudChunkMs)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !html)
 		return;
 
 	EnsureLegacyGameEventListener();
@@ -414,7 +421,7 @@ static void FireCenterHtml(int iSlot, const char* html)
 			goto fallback_plain;
 
 		ev->SetString("loc_token", html);
-		ev->SetInt("duration", kCenterHudChunkMs);
+		ev->SetInt("duration", durationMs);
 
 		if (CEntityInstance* pController = GetControllerBySlot(iSlot))
 			ev->SetPlayer("userid", pController);
@@ -471,6 +478,29 @@ struct PendingCenter
 };
 
 static std::vector<PendingCenter> s_PendingCenter;
+
+static void RemovePendingCenter(int iSlot)
+{
+	for (size_t i = 0; i < s_PendingCenter.size(); )
+	{
+		if (s_PendingCenter[i].iSlot == iSlot)
+		{
+			s_PendingCenter[i] = s_PendingCenter.back();
+			s_PendingCenter.pop_back();
+		}
+		else
+			i++;
+	}
+}
+
+void LRCenterStop(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+
+	RemovePendingCenter(iSlot);
+	FireCenterHtml(iSlot, "", 1);
+}
 
 void LRCenterHtml(int iSlot, const char* html, float durationSec)
 {
@@ -546,7 +576,7 @@ void LRCenterPhrase(int iSlot, const char* phraseKey, ...)
 	va_end(va);
 
 	char html[1200];
-	WrapCenterHtml(html, sizeof(html), body);
+	WrapCenterHtml(html, sizeof(html), body, "Prefix");
 	LRCenterHtml(iSlot, html, 5.0f);
 }
 
@@ -561,7 +591,7 @@ void PhraseFormatHtml(char* out, size_t outSize, const char* phraseKey, ...)
 void LRCenterBody(int iSlot, const char* htmlBody, float durationSec)
 {
 	char html[4096];
-	WrapCenterHtml(html, sizeof(html), htmlBody ? htmlBody : "");
+	WrapCenterHtml(html, sizeof(html), htmlBody ? htmlBody : "", "Prefix");
 	LRCenterHtml(iSlot, html, durationSec);
 }
 
@@ -574,7 +604,7 @@ void LRCenterFormat(int iSlot, float durationSec, const char* fmt, ...)
 	va_end(va);
 
 	char html[1200];
-	WrapCenterHtml(html, sizeof(html), body);
+	WrapCenterHtml(html, sizeof(html), body, "Prefix");
 	LRCenterHtml(iSlot, html, durationSec);
 }
 
@@ -650,7 +680,16 @@ void LRPrintPhrase(int iSlot, const char* phraseKey, ...)
 	va_start(va, phraseKey);
 	V_vsnprintf(body, sizeof(body), Phrase(phraseKey), va);
 	va_end(va);
-	LRPrint(iSlot, "%s", body);
+
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+	{
+		ConMsg("[LR] %s\n", body);
+		return;
+	}
+
+	char final_[600];
+	FormatFinal(final_, sizeof(final_), body);
+	SendChatToMask(1ull << iSlot, final_);
 }
 
 void LRPrintAllPhrase(const char* phraseKey, ...)
@@ -660,5 +699,16 @@ void LRPrintAllPhrase(const char* phraseKey, ...)
 	va_start(va, phraseKey);
 	V_vsnprintf(body, sizeof(body), Phrase(phraseKey), va);
 	va_end(va);
-	LRPrintAll("%s", body);
+
+	uint64_t mask = 0;
+	for (int i = 0; i < LR_MAXPLAYERS; i++)
+	{
+		CEntityInstance* pController = GetControllerBySlot(i);
+		if (pController && g_Players[i].steam64)
+			mask |= 1ull << i;
+	}
+
+	char final_[600];
+	FormatFinal(final_, sizeof(final_), body);
+	SendChatToMask(mask, final_);
 }
