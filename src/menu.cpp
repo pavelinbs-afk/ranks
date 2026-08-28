@@ -15,7 +15,6 @@ enum class MenuScreen : uint8_t
 	TopExp,
 	TopTime,
 	Session,
-	Rank,
 };
 
 struct TopRow
@@ -150,36 +149,6 @@ static void AppendActionLine(std::string& html, int key, const char* text)
 static void AppendNavFooterSimple(std::string& html, bool showBack)
 {
 	AppendNavFooter(html, 0, 1, showBack, false);
-}
-
-static void ShowRankMenu(int iSlot, int posTop, float kd)
-{
-	PlayerInfo& p = g_Players[iSlot];
-	char safeName[128];
-	HtmlEscapeShort(p.name, safeName, sizeof(safeName));
-
-	char l1[160], l2[128], l3[128], l4[128], l5[128], l6[128];
-	V_snprintf(l1, sizeof(l1), "Игрок: %s", safeName);
-	V_snprintf(l2, sizeof(l2), "Место: %i / %i", posTop, g_iDBCountPlayers);
-	V_snprintf(l3, sizeof(l3), "Опыт: %i", p.st.exp);
-	V_snprintf(l4, sizeof(l4), "Убийств: %i", p.st.kills);
-	V_snprintf(l5, sizeof(l5), "Смертей: %i", p.st.deaths);
-	V_snprintf(l6, sizeof(l6), "K/D: %.2f", kd);
-
-	std::string html;
-	AppendTitle(html, "Меню рангов | Статистика");
-	AppendInfoLine(html, 1, l1);
-	AppendInfoLine(html, 2, l2);
-	AppendInfoLine(html, 3, l3);
-	AppendInfoLine(html, 4, l4);
-	AppendInfoLine(html, 5, l5);
-	AppendInfoLine(html, 6, l6);
-	AppendNavFooterSimple(html, false);
-
-	s_Menu[iSlot].screen = MenuScreen::Rank;
-	s_Menu[iSlot].backScreen = MenuScreen::None;
-	s_Menu[iSlot].page = 0;
-	MenuShow(iSlot, html.c_str());
 }
 
 static void FetchPlaceThenShowMain(int iSlot)
@@ -429,38 +398,6 @@ void Menu_OpenSession(int iSlot)
 void Menu_OpenTop(int iSlot, bool byTime)
 {
 	FetchTopThenShow(iSlot, byTime, MenuScreen::None);
-}
-
-void Menu_OpenRank(int iSlot)
-{
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRCenterPhrase(iSlot, "NotLoaded");
-		return;
-	}
-
-	uint64_t steam64 = p.steam64;
-	char q[512];
-	V_snprintf(q, sizeof(q),
-		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`);",
-		g_Cfg.tableName, p.level, p.level, p.st.exp);
-
-	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
-		if (g_Players[iSlot].steam64 != steam64 || !g_Players[iSlot].loaded || PlayerGeneration(iSlot) != gen)
-			return;
-
-		int posTop = g_Players[iSlot].posTop;
-		if (r.ok && r.RowCount())
-		{
-			posTop = r.GetInt(0, 0);
-			g_Players[iSlot].posTop = posTop;
-		}
-
-		PlayerInfo& pl = g_Players[iSlot];
-		float kd = pl.st.kills / (pl.st.deaths ? float(pl.st.deaths) : 1.0f);
-		ShowRankMenu(iSlot, posTop, kd);
-	});
 }
 
 bool Menu_IsActive(int iSlot)

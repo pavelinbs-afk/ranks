@@ -227,13 +227,13 @@
 	}
 	"RoundStartMessageRanks"
 	{
-		"ru"	"Команды: {GREEN}!rank !top !toptime !session !rs{DEFAULT}"
-		"en"	"Commands: {GREEN}!rank !top !toptime !session !rs{DEFAULT}"
+		"ru"	"Команды: {GREEN}!rank !top !toptime !session !resetstats{DEFAULT}"
+		"en"	"Commands: {GREEN}!rank !top !toptime !session !resetstats{DEFAULT}"
 	}
 	"SpawnHintCommands"
 	{
-		"ru"	"Команды: {GREEN}!lvl !top !toptime !session !rs{DEFAULT} — по центру<br/>{GREEN}!rank{DEFAULT} — статистика в чат"
-		"en"	"Commands: {GREEN}!lvl !top !toptime !session !rs{DEFAULT} — center HUD<br/>{GREEN}!rank{DEFAULT} — stats in chat"
+		"ru"	"Команды: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — по центру<br/>{GREEN}!rank{DEFAULT} — статистика в чат"
+		"en"	"Commands: {GREEN}!lvl !top !toptime !session !resetstats{DEFAULT} — center HUD<br/>{GREEN}!rank{DEFAULT} — stats in chat"
 	}
 	"SpawnHintRank"
 	{

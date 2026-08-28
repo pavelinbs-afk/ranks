@@ -1,7 +1,6 @@
 #pragma once
 
-// Yooma-style center HTML menu for !rank / !lvl / !session / !top / !toptime (+ !1..!9 nav).
-void Menu_OpenRank(int iSlot);
+// Yooma-style center HTML menu for !lvl / !session / !top / !toptime (+ !1..!9 nav).
 void Menu_OpenLvl(int iSlot);
 void Menu_OpenSession(int iSlot);
 void Menu_OpenTop(int iSlot, bool byTime);

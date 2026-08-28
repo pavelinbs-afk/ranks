@@ -29,7 +29,43 @@ static bool ParseMenuKey(const char* text, int* outKey)
 
 static void CmdRank(int iSlot)
 {
-	Menu_OpenRank(iSlot);
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.loaded)
+	{
+		LRPrintPhrase(iSlot, "NotLoaded");
+		return;
+	}
+
+	uint64_t steam64 = p.steam64;
+	char q[512];
+	V_snprintf(q, sizeof(q),
+		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`);",
+		g_Cfg.tableName, p.level, p.level, p.st.exp);
+
+	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
+		PlayerInfo& p = g_Players[iSlot];
+		if (p.steam64 != steam64 || !p.loaded || PlayerGeneration(iSlot) != gen)
+			return;
+		if (r.ok && r.RowCount())
+			p.posTop = r.GetInt(0, 0);
+
+		float kd = p.st.kills / (p.st.deaths ? float(p.st.deaths) : 1.0f);
+
+		if (g_Cfg.showRankMessage)
+		{
+			for (int i = 0; i < LR_MAXPLAYERS; i++)
+			{
+				if (g_Players[i].loaded)
+					LRPrintPhrase(i, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
+						p.st.exp, p.st.kills, p.st.deaths, kd);
+			}
+		}
+		else
+		{
+			LRPrintPhrase(iSlot, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
+				p.st.exp, p.st.kills, p.st.deaths, kd);
+		}
+	});
 }
 
 static void CmdLevel(int iSlot)
@@ -112,7 +148,7 @@ static bool RunChatCommand(int iSlot, const char* text)
 		CmdTop(iSlot, true);
 	else if (!V_stricmp(cmd, "session"))
 		CmdSession(iSlot);
-	else if (!V_stricmp(cmd, "resetstats") || !V_stricmp(cmd, "rs"))
+	else if (!V_stricmp(cmd, "resetstats"))
 		CmdResetStats(iSlot);
 	else
 		return false;
@@ -134,7 +170,7 @@ bool Commands_IsChatCommand(int iSlot, const char* text)
 
 	static const char* known[] = {
 		"rank", "ранг", "lvl", "level", "лвл",
-		"top", "toptime", "session", "resetstats", "rs",
+		"top", "toptime", "session", "resetstats",
 	};
 	for (const char* k : known)
 	{
