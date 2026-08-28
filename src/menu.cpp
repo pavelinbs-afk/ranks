@@ -41,10 +41,10 @@ struct MenuState
 
 static MenuState s_Menu[LR_MAXPLAYERS];
 
-static const float kMenuDuration = 45.0f;
+static const float kMenuDuration = 120.0f;
 static const float kMenuRefresh = 0.02f;
-// Центральный HUD CS2: заголовок + до 5 пунктов + футер (~7 строк). Больше — обрезается снизу.
-static const int kListItemsPerPage = 5;
+// Центральный HUD CS2: prefix + заголовок + до 4 пунктов + nav = ~7 строк.
+static const int kListItemsPerPage = 4;
 static const int kMyStatsPages = 2;
 
 static int ClampPage(int page, int totalPages)
@@ -69,7 +69,6 @@ static int TotalPages(int itemCount, int perPage)
 static void AppendNavFooter(std::string& html, int currentPage, int totalPages,
 	bool showBack, bool hideBackOnFirstPage = false, const char* closeLabel = "Закрыть")
 {
-	html += "<br/>";
 	const char* sep = " <font color='#555555'>|</font> ";
 	bool first = true;
 
@@ -102,6 +101,21 @@ static void HtmlEscapeShort(const char* in, char* out, size_t outSize)
 	HtmlEscape(in, out, outSize);
 }
 
+static void MenuBumpTimeout(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+	MenuState& m = s_Menu[iSlot];
+	if (m.screen == MenuScreen::None)
+		return;
+
+	CGlobalVars* gv = GetGlobals();
+	if (!gv)
+		return;
+
+	m.until = gv->curtime + kMenuDuration;
+}
+
 static void MenuClose(int iSlot)
 {
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
@@ -119,7 +133,7 @@ static void MenuShow(int iSlot, const char* html)
 	float now = gv ? gv->curtime : 0.0f;
 
 	char wrapped[4096];
-	LRWrapCenterHtml(wrapped, sizeof(wrapped), html);
+	LRWrapCenterHtml(wrapped, sizeof(wrapped), html, "");
 
 	V_strncpy(s_Menu[iSlot].html, wrapped, sizeof(s_Menu[iSlot].html));
 	s_Menu[iSlot].until = now + kMenuDuration;
@@ -179,21 +193,22 @@ static void ShowMainMenu(int iSlot)
 	MenuState& m = s_Menu[iSlot];
 	m.page = 0;
 
-	char rankLine[128], expLine[128];
-	V_snprintf(rankLine, sizeof(rankLine), "Звание: Уровень %i", pl.level);
-
+	char line1[128], line2[128];
 	if (pl.level < rankCount)
-		V_snprintf(expLine, sizeof(expLine), "Опыт: %i / %i | Место: %i из %i",
-			pl.st.exp, ExpForNextLevel(pl.level), pl.posTop, g_iDBCountPlayers);
+		V_snprintf(line1, sizeof(line1), "Звание: Уровень %i | Опыт: %i / %i",
+			pl.level, pl.st.exp, ExpForNextLevel(pl.level));
 	else
-		V_snprintf(expLine, sizeof(expLine), "Опыт: %i | Место: %i из %i",
-			pl.st.exp, pl.posTop, g_iDBCountPlayers);
+		V_snprintf(line1, sizeof(line1), "Звание: Уровень %i | Опыт: %i",
+			pl.level, pl.st.exp);
+
+	V_snprintf(line2, sizeof(line2), "Место: %i / %i",
+		pl.posTop, g_iDBCountPlayers);
 
 	std::string html;
 	AppendTitle(html, "Меню рангов");
 
-	AppendInfoLine(html, 1, rankLine);
-	AppendInfoLine(html, 2, expLine);
+	AppendInfoLine(html, 1, line1);
+	AppendInfoLine(html, 2, line2);
 	AppendActionLine(html, 3, "Моя статистика");
 	AppendActionLine(html, 4, "TOP 10");
 	AppendActionLine(html, 5, "Все ранги");
@@ -218,6 +233,8 @@ static void FetchPlaceThenShowMain(int iSlot)
 		LRCenterPhrase(iSlot, "NotLoaded");
 		return;
 	}
+
+	MenuBumpTimeout(iSlot);
 
 	uint64_t steam64 = p.steam64;
 	char q[512];
@@ -277,18 +294,16 @@ static void ShowMyStatsMenu(int iSlot, MenuScreen back)
 		int rounds = p.st.roundWin + p.st.roundLose;
 		int wrPct = rounds ? (p.st.roundWin * 100 / rounds) : 0;
 
-		char l1[128], l2[64], l3[64], l4[64];
+		char l1[128], l2[64], l3[96], l4[64];
 		V_snprintf(l1, sizeof(l1), "Хедшотов: %i (%i%%)", p.st.headshots, hsPct);
 		V_snprintf(l2, sizeof(l2), "KDR: %.2f", kd);
-		V_snprintf(l3, sizeof(l3), "Точность: %i%%", accPct);
-		V_snprintf(l4, sizeof(l4), "Винрейт: %i%%", wrPct);
+		V_snprintf(l3, sizeof(l3), "Точность: %i%% | WR: %i%%", accPct, wrPct);
 
 		AppendInfoLine(html, 1, l1);
 		AppendInfoLine(html, 2, l2);
 		AppendInfoLine(html, 3, l3);
-		AppendInfoLine(html, 4, l4);
 		if (g_Cfg.showResetStats)
-			AppendActionLine(html, 5, "Сбросить статистику");
+			AppendActionLine(html, 4, "Сбросить статистику");
 		AppendNavFooter(html, page, kMyStatsPages, true, false, "Выход");
 	}
 
@@ -312,12 +327,12 @@ static void ShowSessionMenu(int iSlot, MenuScreen back)
 	FormatDuration(SessionTime(iSlot), timeStr, sizeof(timeStr));
 	V_snprintf(kdStr, sizeof(kdStr), "%.2f", StatKD(p.sess.kills, p.sess.deaths));
 
-	char l1[128], l2[128], l3[128], l4[128], l5[128];
+	char l1[128], l2[160], l3[128], l4[128], l5[128];
 	V_snprintf(l1, sizeof(l1), "Время: %s", timeStr);
-	V_snprintf(l2, sizeof(l2), "Опыт: %s", expStr);
-	V_snprintf(l3, sizeof(l3), "Убийств: %i | Смертей: %i", p.sess.kills, p.sess.deaths);
-	V_snprintf(l4, sizeof(l4), "Хедшотов: %i", p.sess.headshots);
-	V_snprintf(l5, sizeof(l5), "K/D: %s | место: %s", kdStr, posStr);
+	V_snprintf(l2, sizeof(l2), "Опыт: %s | Место: %s | K/D: %s", expStr, posStr, kdStr);
+	V_snprintf(l3, sizeof(l3), "Убийств: %i", p.sess.kills);
+	V_snprintf(l4, sizeof(l4), "Смертей: %i", p.sess.deaths);
+	V_snprintf(l5, sizeof(l5), "Хедшотов: %i", p.sess.headshots);
 
 	std::string html;
 	if (back == MenuScreen::MyStats)
@@ -427,6 +442,8 @@ static void ShowTopMenu(int iSlot)
 
 static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 {
+	MenuBumpTimeout(iSlot);
+
 	char q[512];
 	if (byTime)
 		V_snprintf(q, sizeof(q),
@@ -505,6 +522,10 @@ bool Menu_TryHandleKey(int iSlot, int key)
 	MenuState& m = s_Menu[iSlot];
 	if (m.screen == MenuScreen::None || g_Players[iSlot].steam64 != m.steam64)
 		return false;
+
+	// Любое нажатие !1..!8 продлевает таймер (раньше сбрасывался только при смене экрана).
+	if (key != 9)
+		MenuBumpTimeout(iSlot);
 
 	if (key == 9)
 	{
@@ -622,7 +643,7 @@ bool Menu_TryHandleKey(int iSlot, int key)
 		case MenuScreen::MyStats:
 			if (m.page == 0 && key == 1)
 				ShowSessionMenu(iSlot, MenuScreen::MyStats);
-			else if (m.page == 1 && key == 5 && g_Cfg.showResetStats)
+			else if (m.page == 1 && key == 4 && g_Cfg.showResetStats)
 			{
 				MenuClose(iSlot);
 				Commands_RequestResetStats(iSlot);

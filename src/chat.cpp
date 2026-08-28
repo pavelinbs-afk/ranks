@@ -1,5 +1,6 @@
 #include "lr_core.h"
 #include "chat.h"
+#include "menu.h"
 #include "vtable_finder.h"
 
 #include <cstring>
@@ -398,14 +399,17 @@ static void WrapCenterHtml(char* out, size_t outSize, const char* body, const ch
 
 void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
 {
-	if (!prefixKey)
-		prefixKey = "Prefix";
+	if (!prefixKey || !*prefixKey)
+	{
+		V_strncpy(out, body ? body : "", (int)outSize);
+		return;
+	}
 	WrapCenterHtml(out, outSize, body ? body : "", prefixKey);
 }
 
 static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenterHudChunkMs)
 {
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !html)
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return;
 
 	EnsureLegacyGameEventListener();
@@ -420,7 +424,7 @@ static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenter
 		if (!ev)
 			goto fallback_plain;
 
-		ev->SetString("loc_token", html);
+		ev->SetString("loc_token", html ? html : "");
 		ev->SetInt("duration", durationMs);
 
 		if (CEntityInstance* pController = GetControllerBySlot(iSlot))
@@ -428,13 +432,44 @@ static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenter
 
 		pListener->FireGameEvent(ev);
 		g_pGameEventManager->FreeEvent(ev);
+
+		if (!html || !*html)
+		{
+			// Second pulse hides the survival-respawn panel chrome (empty loc_token leaves a bar).
+			IGameEvent* ev2 = g_pGameEventManager->CreateEvent("show_survival_respawn_status", true);
+			if (ev2)
+			{
+				ev2->SetString("loc_token", "<font></font>");
+				ev2->SetInt("duration", 1);
+				if (CEntityInstance* pController = GetControllerBySlot(iSlot))
+					ev2->SetPlayer("userid", pController);
+				pListener->FireGameEvent(ev2);
+				g_pGameEventManager->FreeEvent(ev2);
+			}
+		}
 		return;
 	}
 
 fallback_plain:
-	// Fallback: plain center text (strip simple tags).
 	if (!g_pNetworkMessages || !g_pGameEventSystem)
 		return;
+
+	if (!html || !*html)
+	{
+		INetworkMessageInternal* pMsg = g_pNetworkMessages->FindNetworkMessagePartial("TextMsg");
+		if (!pMsg)
+			return;
+
+		auto* data = pMsg->AllocateMessage()->ToPB<CUserMessageTextMsg>();
+		data->set_dest(HUD_DEST_CENTER);
+		data->add_param("");
+
+		uint64 clients = 1ull << iSlot;
+		g_pGameEventSystem->PostEventAbstract(CSplitScreenSlot(-1), false, LR_MAXPLAYERS, &clients,
+			pMsg, data, 0, NetChannelBufType_t::BUF_RELIABLE);
+		delete data;
+		return;
+	}
 
 	char plain[1024];
 	const char* src = html;
@@ -499,7 +534,7 @@ void LRCenterStop(int iSlot)
 		return;
 
 	RemovePendingCenter(iSlot);
-	FireCenterHtml(iSlot, "", 1);
+	FireCenterHtml(iSlot, "", 0);
 }
 
 void LRCenterHtml(int iSlot, const char* html, float durationSec)
@@ -512,7 +547,13 @@ void LRCenterHtml(int iSlot, const char* html, float durationSec)
 	if (!html || !*html)
 		return;
 
-	FireCenterHtml(iSlot, html);
+	int durationMs = (int)(durationSec * 1000.0f);
+	if (durationMs < 1)
+		durationMs = 1;
+	if (durationMs > kCenterHudChunkMs)
+		durationMs = kCenterHudChunkMs;
+
+	FireCenterHtml(iSlot, html, durationMs);
 
 	if (durationSec <= 0.0f)
 		return;
@@ -550,9 +591,23 @@ void Center_OnGameFrame()
 	for (size_t i = 0; i < s_PendingCenter.size(); )
 	{
 		PendingCenter& pc = s_PendingCenter[i];
-		if (now >= pc.until || pc.iSlot < 0 || pc.iSlot >= LR_MAXPLAYERS
-			|| !g_Players[pc.iSlot].steam64)
+		if (pc.iSlot < 0 || pc.iSlot >= LR_MAXPLAYERS || !g_Players[pc.iSlot].steam64)
 		{
+			s_PendingCenter[i] = s_PendingCenter.back();
+			s_PendingCenter.pop_back();
+			continue;
+		}
+
+		// Пока открыто меню — HUD обновляет Menu_OnGameFrame, не гасим здесь по таймеру.
+		if (now >= pc.until && Menu_IsActive(pc.iSlot))
+		{
+			i++;
+			continue;
+		}
+
+		if (now >= pc.until)
+		{
+			FireCenterHtml(pc.iSlot, "", 0);
 			s_PendingCenter[i] = s_PendingCenter.back();
 			s_PendingCenter.pop_back();
 			continue;

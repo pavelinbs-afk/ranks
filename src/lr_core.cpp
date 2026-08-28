@@ -17,6 +17,7 @@
 #include "menu.h"
 #include "tab.h"
 #include "wallet.h"
+#include "vtable_finder.h"
 
 LRCorePlugin g_LRPlugin;
 PLUGIN_EXPOSE(LRCorePlugin, g_LRPlugin);
