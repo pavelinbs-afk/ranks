@@ -310,6 +310,49 @@ void TickActivePlaytime()
 	}
 }
 
+void PulseOnlinePresence()
+{
+	if (!g_bCoreReady || !DB_IsConnected())
+		return;
+
+	static float s_nextPulse = 0.0f;
+	CGlobalVars* gv = GetGlobals();
+	if (!gv || gv->curtime < s_nextPulse)
+		return;
+	s_nextPulse = gv->curtime + 15.0f;
+
+	time_t now = time(nullptr);
+	for (int i = 0; i < LR_MAXPLAYERS; i++)
+	{
+		PlayerInfo& p = g_Players[i];
+		if (!p.loaded || !p.steam64)
+			continue;
+
+		char q[320];
+		V_snprintf(q, sizeof(q),
+			"UPDATE `%s` SET `online` = %i, `lastconnect` = %lld WHERE `steam` = '%s';",
+			g_Cfg.tableName, g_Cfg.serverId, (long long)now, p.steamId);
+		DB_Query(q);
+	}
+}
+
+void ClearPlayerOnlinePresence(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.steam64 || !*p.steamId)
+		return;
+
+	time_t now = time(nullptr);
+	char q[320];
+	V_snprintf(q, sizeof(q),
+		"UPDATE `%s` SET `online` = 0, `lastconnect` = %lld WHERE `steam` = '%s';",
+		g_Cfg.tableName, (long long)now, p.steamId);
+	DB_Query(q);
+}
+
 void GiveTimeExp()
 {
 	if (!g_bCoreReady || g_Cfg.timeExpAmount == 0 || g_Cfg.timeExpInterval <= 0)

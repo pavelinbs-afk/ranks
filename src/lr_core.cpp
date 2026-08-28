@@ -429,6 +429,7 @@ void LRCorePlugin::Hook_GameFrame(bool simulating, bool bFirstTick, bool bLastTi
 	Menu_OnGameFrame();
 	Center_OnGameFrame();
 	TickActivePlaytime();
+	PulseOnlinePresence();
 	GiveTimeExp();
 	Tab_OnGameFrame();
 }
@@ -458,6 +459,7 @@ void LRCorePlugin::Hook_ClientDisconnect(CPlayerSlot slot, ENetworkDisconnection
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return;
 
+	ClearPlayerOnlinePresence(iSlot);
 	SavePlayer(iSlot, true);
 	Menu_OnDisconnect(iSlot);
 	Commands_OnDisconnect(iSlot);

@@ -246,6 +246,12 @@ bool IsPlayerOnActiveTeam(int iSlot);
 // Active team playtime + interval coins; call once per game frame.
 void TickActivePlaytime();
 
+// Keep `online` / `lastconnect` fresh while players are connected (profile «Играет на …»).
+void PulseOnlinePresence();
+
+// Immediate offline signal on disconnect (before full SavePlayer flush).
+void ClearPlayerOnlinePresence(int iSlot);
+
 // Returns false if player not ready or stats blocked (unless bypassRestrictions).
 bool GiveCoins(int iSlot, int amount, const char* phraseKey, bool bypassRestrictions = false);
 
