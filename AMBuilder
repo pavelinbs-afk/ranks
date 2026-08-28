@@ -31,6 +31,7 @@ for sdk_target in MMSPlugin.sdk_targets:
     os.path.join(MMSPlugin.mariadb_prefix, 'lib', 'mariadb', 'libmariadbclient.a'),
     '/usr/lib/x86_64-linux-gnu/libssl.a',
     '/usr/lib/x86_64-linux-gnu/libcrypto.a',
+    '-lcurl',
     '-ldl',
     '-lpthread',
   ]
@@ -47,6 +48,7 @@ for sdk_target in MMSPlugin.sdk_targets:
     os.path.join('src', 'tab.cpp'),
     os.path.join('src', 'commands.cpp'),
     os.path.join('src', 'menu.cpp'),
+    os.path.join('src', 'wallet.cpp'),
   ]
 
   nodes = builder.Add(binary)

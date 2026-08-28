@@ -7,163 +7,163 @@
 	}
 	"Kill"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за убийство (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for a kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за убийство (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for a kill (total: {LIME}%i{DEFAULT})"
 	}
 	"MyDeath"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за смерть (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for dying (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за смерть (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for dying (total: {LIME}%i{DEFAULT})"
 	}
 	"Suicide"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за суицид (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for suicide (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за суицид (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for suicide (total: {LIME}%i{DEFAULT})"
 	}
 	"TeamKill"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за убийство союзника (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for a teamkill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за убийство союзника (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for a teamkill (total: {LIME}%i{DEFAULT})"
 	}
 	"AssisterKill"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за помощь в убийстве (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for an assist (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за помощь в убийстве (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for an assist (total: {LIME}%i{DEFAULT})"
 	}
 	"HeadShotKill"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за убийство в голову (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for a headshot (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за убийство в голову (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for a headshot (total: {LIME}%i{DEFAULT})"
 	}
 	"RoundWin"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за победу в раунде (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for winning the round (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за победу в раунде (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for winning the round (total: {LIME}%i{DEFAULT})"
 	}
 	"RoundLose"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за проигрыш раунда (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for losing the round (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за проигрыш раунда (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for losing the round (total: {LIME}%i{DEFAULT})"
 	}
 	"RoundMVP"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за MVP раунда (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for round MVP (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за MVP раунда (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for round MVP (total: {LIME}%i{DEFAULT})"
 	}
 	"BombPlanted"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за установку бомбы (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for planting the bomb (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за установку бомбы (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for planting the bomb (total: {LIME}%i{DEFAULT})"
 	}
 	"BombDefused"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за разминирование (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for defusing the bomb (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за разминирование (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for defusing the bomb (total: {LIME}%i{DEFAULT})"
 	}
 	"BombDropped"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за потерю бомбы (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for dropping the bomb (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за потерю бомбы (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for dropping the bomb (total: {LIME}%i{DEFAULT})"
 	}
 	"BombPickup"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за поднятие бомбы (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for picking up the bomb (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за поднятие бомбы (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for picking up the bomb (total: {LIME}%i{DEFAULT})"
 	}
 	"HostageKilled"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта за убийство заложника (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp for killing a hostage (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s за убийство заложника (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s for killing a hostage (total: {LIME}%i{DEFAULT})"
 	}
 	"HostageRescued"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за спасение заложника (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for rescuing a hostage (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за спасение заложника (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for rescuing a hostage (total: {LIME}%i{DEFAULT})"
 	}
 	"TimeExp"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта за время в игре (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp for time played (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s за время в игре (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s for time played (total: {LIME}%i{DEFAULT})"
 	}
 	"CoinInterval"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} коинов за активность (итого: {GOLD}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} coins for active play (total: {GOLD}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} коинов за активность на сервере"
+		"en"	"{GOLD}%s{DEFAULT} coins for active play on the server"
 	}
 	"CoinMvp"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} коинов за MVP (итого: {GOLD}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} coins for MVP (total: {GOLD}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} коинов за MVP раунда"
+		"en"	"{GOLD}%s{DEFAULT} coins for round MVP"
 	}
 	"CoinMultiKill"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} коинов за серию убийств (итого: {GOLD}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} coins for multi-kill (total: {GOLD}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} коинов за серию убийств"
+		"en"	"{GOLD}%s{DEFAULT} coins for multi-kill"
 	}
 	"AdminGive"
 	{
-		"ru"	"{GREEN}%s{DEFAULT} опыта — выдал администратор (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GREEN}%s{DEFAULT} exp given by admin (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GREEN}%s{DEFAULT} опыта%s — выдал администратор (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GREEN}%s{DEFAULT} exp%s given by admin (total: {LIME}%i{DEFAULT})"
 	}
 	"AdminTake"
 	{
-		"ru"	"{RED}%s{DEFAULT} опыта — забрал администратор (итого: {LIME}%i{DEFAULT})"
-		"en"	"{RED}%s{DEFAULT} exp taken by admin (total: {LIME}%i{DEFAULT})"
+		"ru"	"{RED}%s{DEFAULT} опыта%s — забрал администратор (итого: {LIME}%i{DEFAULT})"
+		"en"	"{RED}%s{DEFAULT} exp%s taken by admin (total: {LIME}%i{DEFAULT})"
 	}
 	"DoubleKill"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Double Kill (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Double Kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Double Kill (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Double Kill (total: {LIME}%i{DEFAULT})"
 	}
 	"TripleKill"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Triple Kill (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Triple Kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Triple Kill (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Triple Kill (total: {LIME}%i{DEFAULT})"
 	}
 	"Domination"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Domination (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Domination (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Domination (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Domination (total: {LIME}%i{DEFAULT})"
 	}
 	"Rampage"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Rampage (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Rampage (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Rampage (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Rampage (total: {LIME}%i{DEFAULT})"
 	}
 	"MegaKill"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Mega Kill (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Mega Kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Mega Kill (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Mega Kill (total: {LIME}%i{DEFAULT})"
 	}
 	"Ownage"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Ownage (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Ownage (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Ownage (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Ownage (total: {LIME}%i{DEFAULT})"
 	}
 	"UltraKill"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Ultra Kill (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Ultra Kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Ultra Kill (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Ultra Kill (total: {LIME}%i{DEFAULT})"
 	}
 	"KillingSpree"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Killing Spree (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Killing Spree (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Killing Spree (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Killing Spree (total: {LIME}%i{DEFAULT})"
 	}
 	"MonsterKill"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Monster Kill (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Monster Kill (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Monster Kill (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Monster Kill (total: {LIME}%i{DEFAULT})"
 	}
 	"Unstoppable"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за Unstoppable (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for Unstoppable (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за Unstoppable (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for Unstoppable (total: {LIME}%i{DEFAULT})"
 	}
 	"GodLike"
 	{
-		"ru"	"{GOLD}%s{DEFAULT} опыта за God Like (итого: {LIME}%i{DEFAULT})"
-		"en"	"{GOLD}%s{DEFAULT} exp for God Like (total: {LIME}%i{DEFAULT})"
+		"ru"	"{GOLD}%s{DEFAULT} опыта%s за God Like (итого: {LIME}%i{DEFAULT})"
+		"en"	"{GOLD}%s{DEFAULT} exp%s for God Like (total: {LIME}%i{DEFAULT})"
 	}
 	"LevelUp"
 	{

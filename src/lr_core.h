@@ -83,11 +83,15 @@ struct LRSettings
 	int timeExpAmount;     // exp per interval (0 = feature off)
 	int timeExpInterval;   // seconds between grants
 
-	// coins (MySQL `coins` column)
+	// coins → site_wallets via backend API (not MySQL)
 	int coinsIntervalSec;    // active team seconds between grants (0 = off)
 	int coinsIntervalAmount; // coins per interval (default 10 / 10 min)
 	int coinsMvp;
 	int coinsMultikill;
+
+	bool walletEnabled;
+	char walletApiUrl[256];
+	char walletApiSecret[128];
 
 	// ranks (level thresholds, ascending; level i+1 requires ranksExp[i])
 	std::vector<int> ranksExp;
@@ -138,7 +142,6 @@ struct PlayerInfo
 	int64_t sessionActiveSec = 0; // active team seconds this session (not yet flushed)
 	time_t  connectTime = 0;      // session clock for !session
 
-	int coins = 0;
 	int activeSecSinceCoin = 0;   // active seconds toward next interval coin grant
 
 	int posTop = 0, posTopTime = 0;
@@ -226,7 +229,8 @@ void FormatPlaytimeLong(int64_t seconds, char* out, int outSize);
 
 // Central exp mutation: applies floors, session stats, rank check, chat message.
 // Returns true if the change was applied (player ready + stats allowed or bypassed).
-bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions = false);
+bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions = false,
+	int coins = 0, const char* coinGrantKind = nullptr);
 
 void SavePlayer(int iSlot, bool disconnect = false);
 
@@ -252,8 +256,8 @@ void PulseOnlinePresence();
 // Immediate offline signal on disconnect (before full SavePlayer flush).
 void ClearPlayerOnlinePresence(int iSlot);
 
-// Returns false if player not ready or stats blocked (unless bypassRestrictions).
-bool GiveCoins(int iSlot, int amount, const char* phraseKey, bool bypassRestrictions = false);
+// Interval coins only (no exp). Shows center message; credits site_wallets via API.
+bool GrantIntervalCoins(int iSlot);
 
 // API hook broadcast (implemented in lr_core.cpp)
 void ApiFireCoreReady();

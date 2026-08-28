@@ -85,8 +85,8 @@ static void ReplaceColors(std::string& s)
 
 struct PhraseSpec { const char* key; const char* args; };
 
-// ChangeExp() passes (const char* signedDelta, int newExp) to all of these.
-#define LR_EXP_ARGS "si"
+// ChangeExp() passes (const char* signedDelta, const char* coinSuffix, int newExp) to exp phrases.
+#define LR_EXP_ARGS "ssi"
 
 static const PhraseSpec s_Specs[] = {
 	{"Kill",            LR_EXP_ARGS},
@@ -119,9 +119,9 @@ static const PhraseSpec s_Specs[] = {
 	{"Unstoppable",     LR_EXP_ARGS},
 	{"GodLike",         LR_EXP_ARGS},
 
-	{"CoinInterval",    "si"},
-	{"CoinMvp",         "si"},
-	{"CoinMultiKill",   "si"},
+	{"CoinInterval",    "s"},
+	{"CoinMvp",         "s"},
+	{"CoinMultiKill",   "s"},
 
 	{"LevelUp",         "i"},        // level number
 	{"LevelDown",       "i"},

@@ -16,7 +16,7 @@
 #include "players.h"
 #include "menu.h"
 #include "tab.h"
-#include "vtable_finder.h"
+#include "wallet.h"
 
 LRCorePlugin g_LRPlugin;
 PLUGIN_EXPOSE(LRCorePlugin, g_LRPlugin);
@@ -371,6 +371,14 @@ void LRCorePlugin::AllPluginsLoaded()
 
 	DB_Start(g_DBConfig);
 	DB_Bootstrap();
+
+	if (g_Cfg.walletEnabled)
+	{
+		if (Wallet_Start())
+			LR_Log("wallet API enabled: %s", g_Cfg.walletApiUrl);
+		else
+			Warning("[LR] wallet API failed to start — coin grants disabled\n");
+	}
 }
 
 bool LRCorePlugin::Unload(char* error, size_t maxlen)
@@ -395,6 +403,7 @@ bool LRCorePlugin::Unload(char* error, size_t maxlen)
 		SH_REMOVE_HOOK_ID(g_iEntSysHookId);
 
 	DB_Stop(); // drains queued saves before exiting
+	Wallet_Stop();
 
 	ConVar_Unregister();
 	return true;

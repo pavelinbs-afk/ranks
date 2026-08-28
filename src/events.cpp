@@ -132,10 +132,8 @@ static void TryPayKillStreak(int iSlot)
 	int idx = streak - 2;
 	if (idx > 10)
 		idx = 10;
-	if (g_Cfg.bonus[idx] != 0)
-		ChangeExp(iSlot, g_Cfg.bonus[idx], phrases[idx]);
-	if (g_Cfg.coinsMultikill > 0)
-		GiveCoins(iSlot, g_Cfg.coinsMultikill, "CoinMultiKill");
+	if (g_Cfg.bonus[idx] != 0 || g_Cfg.coinsMultikill > 0)
+		ChangeExp(iSlot, g_Cfg.bonus[idx], phrases[idx], false, g_Cfg.coinsMultikill, "lr_multikill");
 }
 
 // ---------------------------------------------------------------------------
@@ -346,9 +344,7 @@ public:
 					int iSlot = EventSlot(event, "userid");
 					if (iSlot >= 0)
 					{
-						ChangeExp(iSlot, g_Cfg.expMvp, "RoundMVP");
-						if (g_Cfg.coinsMvp > 0)
-							GiveCoins(iSlot, g_Cfg.coinsMvp, "CoinMvp");
+						ChangeExp(iSlot, g_Cfg.expMvp, "RoundMVP", false, g_Cfg.coinsMvp, "lr_mvp");
 					}
 				}
 				break;

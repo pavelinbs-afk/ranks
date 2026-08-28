@@ -5,6 +5,7 @@
 #include "events.h"
 #include "schema.h"
 #include "tab.h"
+#include "wallet.h"
 
 #include <climits>
 
@@ -203,71 +204,130 @@ void CheckRank(int iSlot, bool bNotify)
 	ApiFireLevelChanged(iSlot, newLevel, oldLevel);
 }
 
-bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions)
+static void QueueWalletCoins(int iSlot, int amount, const char* grantKind, const char* idempotencyKey)
+{
+	if (amount <= 0 || !grantKind || !idempotencyKey || !g_Cfg.walletEnabled)
+		return;
+
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.steam64)
+		return;
+
+	Wallet_QueueGrant(iSlot, p.steam64, amount, grantKind, idempotencyKey);
+}
+
+bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions,
+	int coins, const char* coinGrantKind)
 {
 	if (!IsPlayerReady(iSlot))
 		return false;
 	if (!bypassRestrictions && !g_bAllowStatistic)
 		return false;
 
+	int scaledDelta = delta;
 	if (!bypassRestrictions)
-		delta = ScaleExpByPlayerCount(delta);
+		scaledDelta = ScaleExpByPlayerCount(delta);
 
-	if (delta == 0)
+	int scaledCoins = coins;
+	if (!bypassRestrictions && scaledCoins > 0)
+		scaledCoins = ScaleExpByPlayerCount(scaledCoins);
+
+	if (scaledDelta == 0 && scaledCoins <= 0)
 		return true;
 
-	if (delta != 0)
+	PlayerInfo& p = g_Players[iSlot];
+	int applied = 0;
+
+	if (scaledDelta != 0)
 	{
-		PlayerInfo& p = g_Players[iSlot];
 		int oldExp = p.st.exp;
 
-		int64_t rawExp = (int64_t)p.st.exp + delta;
+		int64_t rawExp = (int64_t)p.st.exp + scaledDelta;
 		if (rawExp > INT_MAX) rawExp = INT_MAX;
 		if (rawExp < 0) rawExp = 0;
 		p.st.exp = (int)rawExp;
 
-		int applied = p.st.exp - oldExp;
+		applied = p.st.exp - oldExp;
 		p.roundExp += applied;
 		p.sess.exp += applied;
 
 		CheckRank(iSlot);
 		ApiFireExpChanged(iSlot, applied, p.st.exp);
+	}
 
-		if (g_Cfg.showUsualMessage == 1 && phraseKey)
+	if (scaledCoins > 0 && coinGrantKind)
+	{
+		char idem[160];
+		if (!strcmp(coinGrantKind, "lr_multikill"))
+		{
+			V_snprintf(idem, sizeof(idem), "lr:%i:%llu:multikill:%i:%lld",
+				g_Cfg.serverId, (unsigned long long)p.steam64, p.killStreak, (long long)time(nullptr));
+		}
+		else
+		{
+			V_snprintf(idem, sizeof(idem), "lr:%i:%llu:%s:%lld",
+				g_Cfg.serverId, (unsigned long long)p.steam64, coinGrantKind, (long long)time(nullptr));
+		}
+		QueueWalletCoins(iSlot, scaledCoins, coinGrantKind, idem);
+	}
+
+	if (g_Cfg.showUsualMessage == 1 && phraseKey && (applied != 0 || scaledCoins > 0))
+	{
+		if (applied != 0)
 		{
 			char sDelta[16];
 			V_snprintf(sDelta, sizeof(sDelta), "%s%i", applied > 0 ? "+" : "", applied);
-			LRCenterPhrase(iSlot, phraseKey, sDelta, p.st.exp);
+
+			char coinPart[64] = "";
+			if (scaledCoins > 0)
+			{
+				char sCoins[16];
+				V_snprintf(sCoins, sizeof(sCoins), "+%i", scaledCoins);
+				V_snprintf(coinPart, sizeof(coinPart), " и {GOLD}%s{DEFAULT} коинов", sCoins);
+			}
+
+			LRCenterPhrase(iSlot, phraseKey, sDelta, coinPart, p.st.exp);
+		}
+		else if (scaledCoins > 0)
+		{
+			char sCoins[16];
+			V_snprintf(sCoins, sizeof(sCoins), "+%i", scaledCoins);
+			const char* coinPhrase = "CoinInterval";
+			if (coinGrantKind && !strcmp(coinGrantKind, "lr_multikill"))
+				coinPhrase = "CoinMultiKill";
+			else if (coinGrantKind && !strcmp(coinGrantKind, "lr_mvp"))
+				coinPhrase = "CoinMvp";
+			LRCenterPhrase(iSlot, coinPhrase, sCoins);
 		}
 	}
 
-	return true;
+	return scaledDelta != 0 || scaledCoins > 0;
 }
 
-bool GiveCoins(int iSlot, int amount, const char* phraseKey, bool bypassRestrictions)
+bool GrantIntervalCoins(int iSlot)
 {
 	if (!IsPlayerReady(iSlot))
 		return false;
-	if (!bypassRestrictions && !g_bAllowStatistic)
+	if (!g_bAllowStatistic)
 		return false;
 
-	if (!bypassRestrictions)
-		amount = ScaleExpByPlayerCount(amount);
-
-	if (amount == 0)
-		return true;
+	int amount = ScaleExpByPlayerCount(g_Cfg.coinsIntervalAmount);
+	if (amount <= 0)
+		return false;
 
 	PlayerInfo& p = g_Players[iSlot];
-	int64_t raw = (int64_t)p.coins + amount;
-	if (raw > INT_MAX) raw = INT_MAX;
-	if (raw < 0) raw = 0;
-	p.coins = (int)raw;
+	int64_t bucket = TotalPlaytime(iSlot) / g_Cfg.coinsIntervalSec;
+	char idem[160];
+	V_snprintf(idem, sizeof(idem), "lr:%i:%llu:interval:%lld",
+		g_Cfg.serverId, (unsigned long long)p.steam64, (long long)bucket);
 
-	if (g_Cfg.showUsualMessage == 1 && phraseKey)
+	QueueWalletCoins(iSlot, amount, "lr_interval", idem);
+
+	if (g_Cfg.showUsualMessage == 1)
 	{
 		char sDelta[16];
-		V_snprintf(sDelta, sizeof(sDelta), "%s%i", amount > 0 ? "+" : "", amount);
-		LRCenterPhrase(iSlot, phraseKey, sDelta, p.coins);
+		V_snprintf(sDelta, sizeof(sDelta), "+%i", amount);
+		LRCenterPhrase(iSlot, "CoinInterval", sDelta);
 	}
 
 	return true;
@@ -302,7 +362,7 @@ void TickActivePlaytime()
 			continue;
 
 		p.activeSecSinceCoin = 0;
-		if (GiveCoins(i, g_Cfg.coinsIntervalAmount, "CoinInterval"))
+		if (GrantIntervalCoins(i))
 		{
 			if (g_Cfg.saveMode)
 				SavePlayer(i);
@@ -472,7 +532,6 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 			p.st.roundWin  = r.GetInt(0, 8);
 			p.st.roundLose = r.GetInt(0, 9);
 			p.dbPlaytime   = r.GetInt64(0, 10);
-			p.coins        = r.GetInt(0, 11);
 			p.resetCooldownUntil = (time_t)r.GetInt64(0, 12);
 			p.posTop       = r.GetInt(0, 13);
 			p.posTopTime   = r.GetInt(0, 14);
@@ -542,7 +601,7 @@ void SavePlayer(int iSlot, bool disconnect)
 		g_Cfg.tableName, p.steamId, (unsigned long long)p.steam64, DB_Escape(p.name).c_str(),
 		p.st.exp, p.level, p.st.kills, p.st.deaths, p.st.shoots, p.st.hits,
 		p.st.headshots, p.st.assists, p.st.roundWin, p.st.roundLose,
-		(long long)totalPlaytime, p.coins,
+		(long long)totalPlaytime, 0,
 		(long long)now,
 		disconnect ? 0 : g_Cfg.serverId, (long long)p.resetCooldownUntil);
 
