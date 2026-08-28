@@ -42,7 +42,7 @@ struct MenuState
 static MenuState s_Menu[LR_MAXPLAYERS];
 
 static const float kMenuDuration = 45.0f;
-static const float kMenuRefresh = 0.5f;
+static const float kMenuRefresh = 0.02f;
 static const int kItemsPerPage = 4; // как AdminPlugin (perPage = 4)
 static const int kMainPages = 2;
 static const int kMyStatsPages = 2;

@@ -1,5 +1,6 @@
 #include "lr_core.h"
 #include "chat.h"
+#include "vtable_finder.h"
 
 #include <cstring>
 #include <map>
@@ -14,6 +15,38 @@
 
 #define HUD_DEST_CHAT   3
 #define HUD_DEST_CENTER 4
+
+// Как AdminPlugin / CounterStrikeSharp PrintToCenterHtml.
+static constexpr int   kCenterHudChunkMs     = 20000;
+static constexpr float kCenterHudRefreshSec  = 0.02f;
+
+#ifdef _WIN32
+#define LR_SERVER_MODULE "server.dll"
+#else
+#define LR_SERVER_MODULE "/libserver.so"
+#endif
+
+using GetLegacyGameEventListenerFn = IGameEventListener2* (*)(CPlayerSlot);
+
+static GetLegacyGameEventListenerFn s_GetLegacyGameEventListener = nullptr;
+static bool s_LegacyListenerLookupDone = false;
+
+static void EnsureLegacyGameEventListener()
+{
+	if (s_LegacyListenerLookupDone)
+		return;
+	s_LegacyListenerLookupDone = true;
+
+	void* fn = FindFunctionSignature(LR_SERVER_MODULE, ".text",
+		"48 8B 05 ? ? ? ? 48 85 C0 74 ? 83 FF ? 77 ? 48 63 FF 48 C1 E7 ? 48 8D 44 38");
+	if (!fn)
+	{
+		Warning("[LR] LegacyGameEventListener signature not found — center HTML may not render\n");
+		return;
+	}
+
+	s_GetLegacyGameEventListener = reinterpret_cast<GetLegacyGameEventListenerFn>(fn);
+}
 
 static std::map<std::string, std::string> s_Phrases;
 static std::map<std::string, std::string> s_PhrasesRaw;
@@ -368,20 +401,30 @@ static void FireCenterHtml(int iSlot, const char* html)
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !html || !*html)
 		return;
 
-	if (g_pGameEventManager)
+	EnsureLegacyGameEventListener();
+
+	if (g_pGameEventManager && s_GetLegacyGameEventListener)
 	{
-		IGameEvent* ev = g_pGameEventManager->CreateEvent("show_survival_respawn_status", false);
-		if (ev)
-		{
-			ev->SetString("loc_token", html);
-			ev->SetInt("duration", 5);
-			ev->SetPlayer("userid", CPlayerSlot(iSlot));
-			g_pGameEventManager->FireEvent(ev, false);
-			ev->Free();
-			return;
-		}
+		IGameEventListener2* pListener = s_GetLegacyGameEventListener(CPlayerSlot(iSlot));
+		if (!pListener)
+			goto fallback_plain;
+
+		IGameEvent* ev = g_pGameEventManager->CreateEvent("show_survival_respawn_status", true);
+		if (!ev)
+			goto fallback_plain;
+
+		ev->SetString("loc_token", html);
+		ev->SetInt("duration", kCenterHudChunkMs);
+
+		if (CEntityInstance* pController = GetControllerBySlot(iSlot))
+			ev->SetPlayer("userid", pController);
+
+		pListener->FireGameEvent(ev);
+		g_pGameEventManager->FreeEvent(ev);
+		return;
 	}
 
+fallback_plain:
 	// Fallback: plain center text (strip simple tags).
 	if (!g_pNetworkMessages || !g_pGameEventSystem)
 		return;
@@ -447,10 +490,21 @@ void LRCenterHtml(int iSlot, const char* html, float durationSec)
 	CGlobalVars* gv = GetGlobals();
 	float now = gv ? gv->curtime : 0.0f;
 
+	for (PendingCenter& pc : s_PendingCenter)
+	{
+		if (pc.iSlot == iSlot)
+		{
+			pc.until = now + durationSec;
+			pc.nextRefresh = now + kCenterHudRefreshSec;
+			V_strncpy(pc.html, html, sizeof(pc.html));
+			return;
+		}
+	}
+
 	PendingCenter pc;
 	pc.iSlot = iSlot;
 	pc.until = now + durationSec;
-	pc.nextRefresh = now + 0.5f;
+	pc.nextRefresh = now + kCenterHudRefreshSec;
 	V_strncpy(pc.html, html, sizeof(pc.html));
 	s_PendingCenter.push_back(pc);
 }
@@ -477,7 +531,7 @@ void Center_OnGameFrame()
 		if (now >= pc.nextRefresh)
 		{
 			FireCenterHtml(pc.iSlot, pc.html);
-			pc.nextRefresh = now + 0.5f;
+			pc.nextRefresh = now + kCenterHudRefreshSec;
 		}
 		i++;
 	}

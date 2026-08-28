@@ -187,11 +187,90 @@ void* FindVirtualTable(const char* moduleSuffix, const char* className)
 	return nullptr;
 }
 
+static bool ParseHexNibble(char c, uint8_t& out)
+{
+	if (c >= '0' && c <= '9') { out = (uint8_t)(c - '0'); return true; }
+	if (c >= 'A' && c <= 'F') { out = (uint8_t)(c - 'A' + 10); return true; }
+	if (c >= 'a' && c <= 'f') { out = (uint8_t)(c - 'a' + 10); return true; }
+	return false;
+}
+
+void* FindFunctionSignature(const char* moduleSuffix, const char* sectionName, const char* idaSig)
+{
+	if (!moduleSuffix || !sectionName || !idaSig || !*idaSig)
+		return nullptr;
+
+	std::vector<uint8_t> pattern;
+	std::vector<uint8_t> mask; // 1 = must match, 0 = wildcard
+
+	const char* p = idaSig;
+	while (*p)
+	{
+		while (*p == ' ')
+			p++;
+		if (!*p)
+			break;
+
+		if (*p == '?')
+		{
+			pattern.push_back(0);
+			mask.push_back(0);
+			while (*p == '?')
+				p++;
+			continue;
+		}
+
+		if (!p[1])
+			break;
+
+		uint8_t hi = 0, lo = 0;
+		if (!ParseHexNibble(p[0], hi) || !ParseHexNibble(p[1], lo))
+			return nullptr;
+
+		pattern.push_back((uint8_t)((hi << 4) | lo));
+		mask.push_back(1);
+		p += 2;
+	}
+
+	if (pattern.empty())
+		return nullptr;
+
+	ModuleSections mod;
+	if (!ReadSections(moduleSuffix, mod))
+		return nullptr;
+
+	const SectionRange* sec = mod.Get(sectionName);
+	if (!sec)
+		return nullptr;
+
+	for (size_t i = 0; i + pattern.size() <= sec->size; i++)
+	{
+		bool ok = true;
+		for (size_t j = 0; j < pattern.size(); j++)
+		{
+			if (mask[j] && sec->base[i + j] != pattern[j])
+			{
+				ok = false;
+				break;
+			}
+		}
+		if (ok)
+			return sec->base + i;
+	}
+
+	return nullptr;
+}
+
 #else // !__linux__
 
 void* FindVirtualTable(const char*, const char* className)
 {
 	Warning("[LR] vtable lookup is only implemented for Linux (%s)\n", className);
+	return nullptr;
+}
+
+void* FindFunctionSignature(const char*, const char*, const char*)
+{
 	return nullptr;
 }
 
