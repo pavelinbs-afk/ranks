@@ -117,7 +117,7 @@ public:
 	}
 	bool GiveExp(int iSlot, int amount) override
 	{
-		return ChangeExp(iSlot, amount, amount >= 0 ? "AdminGive" : "AdminTake", true);
+		return ChangeExp(iSlot, amount, amount >= 0 ? "AdminGive" : "AdminTake", g_bAdminExpBypass);
 	}
 
 	// --- stats -------------------------------------------------------------

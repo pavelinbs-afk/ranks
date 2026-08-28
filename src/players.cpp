@@ -450,7 +450,7 @@ void GiveTimeExp()
 			continue;
 
 		p.timeExpAt = now + g_Cfg.timeExpInterval;
-		ChangeExp(i, g_Cfg.timeExpAmount, "TimeExp", true);
+		ChangeExp(i, g_Cfg.timeExpAmount, "TimeExp", false);
 		if (g_Cfg.saveMode)
 			SavePlayer(i);
 	}

@@ -33,7 +33,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.6.1.5"; }
+	const char* GetVersion() override		{ return "2.6.1.6"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
@@ -189,6 +189,7 @@ extern PlayerInfo g_Players[LR_MAXPLAYERS];
 extern bool g_bCoreReady;        // DB connected + table ready
 extern bool g_bAllowStatistic;   // not warmup / not custom round
 extern bool g_bCustomRoundActive; // set by lr_customround (VIP integration)
+extern bool g_bAdminExpBypass;   // set by lr_admin_bypass (AdminPlugin developer menu)
 extern int  g_iDBCountPlayers;
 
 inline CGlobalVars* GetGlobals()

@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+bool g_bAdminExpBypass = false;
+
 // ---------------------------------------------------------------------------
 // chat commands
 // ---------------------------------------------------------------------------
@@ -349,6 +351,17 @@ void Commands_ProcessQueue()
 // server console commands (integration surface for C# plugins / the website)
 // ---------------------------------------------------------------------------
 
+CON_COMMAND_F(lr_admin_bypass, "lr_admin_bypass <0|1> — allow lr_exp/GiveExp to bypass stat restrictions", FCVAR_GAMEDLL)
+{
+	if (args.ArgC() < 2)
+	{
+		Msg("lr_admin_bypass is %d\n", g_bAdminExpBypass ? 1 : 0);
+		return;
+	}
+
+	g_bAdminExpBypass = atoi(args[1]) != 0;
+}
+
 CON_COMMAND_F(lr_exp, "lr_exp <steamid64> <give|take|set> <amount>", FCVAR_GAMEDLL)
 {
 	if (args.ArgC() < 4)
@@ -379,7 +392,7 @@ CON_COMMAND_F(lr_exp, "lr_exp <steamid64> <give|take|set> <amount>", FCVAR_GAMED
 
 		// ChangeExp refuses players who are not fully authenticated yet — do not
 		// report success in that case, the caller would record a phantom grant.
-		if (!ChangeExp(iSlot, delta, delta >= 0 ? "AdminGive" : "AdminTake", true))
+		if (!ChangeExp(iSlot, delta, delta >= 0 ? "AdminGive" : "AdminTake", g_bAdminExpBypass))
 		{
 			Msg("[LR] %llu is online but not ready yet (still loading / not authenticated), nothing changed\n",
 				(unsigned long long)steam64);
