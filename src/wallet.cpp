@@ -2,13 +2,51 @@
 #include "lr_core.h"
 #include "config.h"
 
-#include <curl/curl.h>
+#include <dlfcn.h>
 
 #include <atomic>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
+
+// libcurl is loaded at runtime (dlopen) so lr_core.so does not require libcurl.so.4
+// to be present on the game server. Wallet API is disabled when curl is missing.
+
+using CURL = void;
+struct curl_slist;
+
+using curl_write_fn = size_t (*)(char*, size_t, size_t, void*);
+using curl_global_init_fn = int (*)(long);
+using curl_global_cleanup_fn = void (*)();
+using curl_easy_init_fn = CURL* (*)();
+using curl_easy_cleanup_fn = void (*)(CURL*);
+using curl_easy_setopt_fn = int (*)(CURL*, int, ...);
+using curl_easy_perform_fn = int (*)(CURL*);
+using curl_easy_getinfo_fn = int (*)(CURL*, int, ...);
+using curl_slist_append_fn = curl_slist* (*)(curl_slist*, const char*);
+using curl_slist_free_all_fn = void (*)(curl_slist*);
+
+static constexpr int kCurleOk = 0;
+static constexpr int kCurlOptUrl = 10002;
+static constexpr int kCurlOptPostFields = 10015;
+static constexpr int kCurlOptHttpHeader = 10023;
+static constexpr int kCurlOptWriteFunction = 20011;
+static constexpr int kCurlOptTimeout = 13;
+static constexpr int kCurlOptConnectTimeout = 78;
+static constexpr int kCurlInfoResponseCode = 2097154;
+static constexpr long kCurlGlobalDefault = 0;
+
+static void* s_CurlLib = nullptr;
+static curl_global_init_fn p_curl_global_init = nullptr;
+static curl_global_cleanup_fn p_curl_global_cleanup = nullptr;
+static curl_easy_init_fn p_curl_easy_init = nullptr;
+static curl_easy_cleanup_fn p_curl_easy_cleanup = nullptr;
+static curl_easy_setopt_fn p_curl_easy_setopt = nullptr;
+static curl_easy_perform_fn p_curl_easy_perform = nullptr;
+static curl_easy_getinfo_fn p_curl_easy_getinfo = nullptr;
+static curl_slist_append_fn p_curl_slist_append = nullptr;
+static curl_slist_free_all_fn p_curl_slist_free_all = nullptr;
 
 struct WalletJob
 {
@@ -25,6 +63,86 @@ static std::condition_variable s_JobCv;
 static std::deque<WalletJob> s_Jobs;
 static std::atomic<bool> s_Run{false};
 
+static bool ResolveCurlSymbol(void* sym, const char* name)
+{
+	if (!sym)
+	{
+		Warning("[LR] libcurl missing symbol: %s\n", name);
+		return false;
+	}
+	return true;
+}
+
+static bool LoadCurlLibrary()
+{
+	if (s_CurlLib)
+		return p_curl_easy_init != nullptr;
+
+	static const char* kLibs[] = {
+		"libcurl.so.4",
+		"libcurl.so",
+		nullptr,
+	};
+
+	for (int i = 0; kLibs[i]; i++)
+	{
+		s_CurlLib = dlopen(kLibs[i], RTLD_LAZY | RTLD_LOCAL);
+		if (s_CurlLib)
+			break;
+	}
+
+	if (!s_CurlLib)
+	{
+		Warning("[LR] libcurl not found — wallet API disabled (install libcurl4 or set lr_wallet_enabled 0)\n");
+		return false;
+	}
+
+	p_curl_global_init = (curl_global_init_fn)dlsym(s_CurlLib, "curl_global_init");
+	p_curl_global_cleanup = (curl_global_cleanup_fn)dlsym(s_CurlLib, "curl_global_cleanup");
+	p_curl_easy_init = (curl_easy_init_fn)dlsym(s_CurlLib, "curl_easy_init");
+	p_curl_easy_cleanup = (curl_easy_cleanup_fn)dlsym(s_CurlLib, "curl_easy_cleanup");
+	p_curl_easy_setopt = (curl_easy_setopt_fn)dlsym(s_CurlLib, "curl_easy_setopt");
+	p_curl_easy_perform = (curl_easy_perform_fn)dlsym(s_CurlLib, "curl_easy_perform");
+	p_curl_easy_getinfo = (curl_easy_getinfo_fn)dlsym(s_CurlLib, "curl_easy_getinfo");
+	p_curl_slist_append = (curl_slist_append_fn)dlsym(s_CurlLib, "curl_slist_append");
+	p_curl_slist_free_all = (curl_slist_free_all_fn)dlsym(s_CurlLib, "curl_slist_free_all");
+
+	if (!ResolveCurlSymbol((void*)p_curl_global_init, "curl_global_init") ||
+		!ResolveCurlSymbol((void*)p_curl_global_cleanup, "curl_global_cleanup") ||
+		!ResolveCurlSymbol((void*)p_curl_easy_init, "curl_easy_init") ||
+		!ResolveCurlSymbol((void*)p_curl_easy_cleanup, "curl_easy_cleanup") ||
+		!ResolveCurlSymbol((void*)p_curl_easy_setopt, "curl_easy_setopt") ||
+		!ResolveCurlSymbol((void*)p_curl_easy_perform, "curl_easy_perform") ||
+		!ResolveCurlSymbol((void*)p_curl_easy_getinfo, "curl_easy_getinfo") ||
+		!ResolveCurlSymbol((void*)p_curl_slist_append, "curl_slist_append") ||
+		!ResolveCurlSymbol((void*)p_curl_slist_free_all, "curl_slist_free_all"))
+	{
+		dlclose(s_CurlLib);
+		s_CurlLib = nullptr;
+		return false;
+	}
+
+	return true;
+}
+
+static void UnloadCurlLibrary()
+{
+	if (!s_CurlLib)
+		return;
+
+	dlclose(s_CurlLib);
+	s_CurlLib = nullptr;
+	p_curl_global_init = nullptr;
+	p_curl_global_cleanup = nullptr;
+	p_curl_easy_init = nullptr;
+	p_curl_easy_cleanup = nullptr;
+	p_curl_easy_setopt = nullptr;
+	p_curl_easy_perform = nullptr;
+	p_curl_easy_getinfo = nullptr;
+	p_curl_slist_append = nullptr;
+	p_curl_slist_free_all = nullptr;
+}
+
 static size_t CurlDiscard(char* ptr, size_t size, size_t nmemb, void*)
 {
 	return size * nmemb;
@@ -34,7 +152,7 @@ static bool PostWalletGrant(const WalletJob& job)
 {
 	if (!g_Cfg.walletEnabled || !g_Cfg.walletApiUrl[0] || !g_Cfg.walletApiSecret[0])
 		return false;
-	if (job.coins <= 0 || !job.steam64)
+	if (job.coins <= 0 || !job.steam64 || !p_curl_easy_init)
 		return false;
 
 	char body[512];
@@ -42,35 +160,35 @@ static bool PostWalletGrant(const WalletJob& job)
 		"{\"steamId\":\"%llu\",\"coins\":%i,\"grantKind\":\"%s\",\"idempotencyKey\":\"%s\"}",
 		(unsigned long long)job.steam64, job.coins, job.grantKind, job.idempotencyKey);
 
-	CURL* curl = curl_easy_init();
+	CURL* curl = p_curl_easy_init();
 	if (!curl)
 		return false;
 
 	char auth[256];
 	V_snprintf(auth, sizeof(auth), "Authorization: Bearer %s", g_Cfg.walletApiSecret);
 
-	struct curl_slist* headers = nullptr;
-	headers = curl_slist_append(headers, "Content-Type: application/json");
-	headers = curl_slist_append(headers, auth);
+	curl_slist* headers = nullptr;
+	headers = p_curl_slist_append(headers, "Content-Type: application/json");
+	headers = p_curl_slist_append(headers, auth);
 
-	curl_easy_setopt(curl, CURLOPT_URL, g_Cfg.walletApiUrl);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlDiscard);
-	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 8L);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 4L);
+	p_curl_easy_setopt(curl, kCurlOptUrl, g_Cfg.walletApiUrl);
+	p_curl_easy_setopt(curl, kCurlOptHttpHeader, headers);
+	p_curl_easy_setopt(curl, kCurlOptPostFields, body);
+	p_curl_easy_setopt(curl, kCurlOptWriteFunction, (curl_write_fn)CurlDiscard);
+	p_curl_easy_setopt(curl, kCurlOptTimeout, 8L);
+	p_curl_easy_setopt(curl, kCurlOptConnectTimeout, 4L);
 
-	CURLcode rc = curl_easy_perform(curl);
+	int rc = p_curl_easy_perform(curl);
 	long code = 0;
-	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+	p_curl_easy_getinfo(curl, kCurlInfoResponseCode, &code);
 
-	curl_slist_free_all(headers);
-	curl_easy_cleanup(curl);
+	p_curl_slist_free_all(headers);
+	p_curl_easy_cleanup(curl);
 
-	if (rc != CURLE_OK || code < 200 || code >= 300)
+	if (rc != kCurleOk || code < 200 || code >= 300)
 	{
 		Warning("[LR] wallet grant failed steam=%llu coins=%i http=%ld curl=%i\n",
-			(unsigned long long)job.steam64, job.coins, code, (int)rc);
+			(unsigned long long)job.steam64, job.coins, code, rc);
 		return false;
 	}
 	return true;
@@ -98,9 +216,13 @@ bool Wallet_Start()
 	if (s_Run)
 		return true;
 
-	if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0)
+	if (!LoadCurlLibrary())
+		return false;
+
+	if (p_curl_global_init(kCurlGlobalDefault) != 0)
 	{
 		Warning("[LR] curl_global_init failed — wallet API disabled\n");
+		UnloadCurlLibrary();
 		return false;
 	}
 
@@ -123,7 +245,10 @@ void Wallet_Stop()
 		s_Worker.join();
 
 	s_Jobs.clear();
-	curl_global_cleanup();
+
+	if (p_curl_global_cleanup)
+		p_curl_global_cleanup();
+	UnloadCurlLibrary();
 }
 
 void Wallet_QueueGrant(int iSlot, uint64_t steam64, int coins, const char* grantKind, const char* idempotencyKey)
