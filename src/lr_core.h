@@ -28,12 +28,12 @@ public:
 	void AllPluginsLoaded() override;
 	void* OnMetamodQuery(const char* iface, int* ret) override;
 
-	const char* GetAuthor() override		{ return "lr_core"; }
+	const char* GetAuthor() override		{ return "2k_x & pRfect"; }
 	const char* GetName() override			{ return "[LR] Core"; }
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "1.0.0"; }
+	const char* GetVersion() override		{ return "2.6.1.5"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
