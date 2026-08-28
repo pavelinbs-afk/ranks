@@ -1,6 +1,7 @@
 #include "menu.h"
 #include "lr_core.h"
 #include "chat.h"
+#include "commands.h"
 #include "db.h"
 #include "players.h"
 
@@ -15,6 +16,7 @@ enum class MenuScreen : uint8_t
 	TopExp,
 	TopTime,
 	Session,
+	MyStats,
 };
 
 struct TopRow
@@ -42,6 +44,8 @@ static MenuState s_Menu[LR_MAXPLAYERS];
 static const float kMenuDuration = 45.0f;
 static const float kMenuRefresh = 0.5f;
 static const int kItemsPerPage = 4; // как AdminPlugin (perPage = 4)
+static const int kMainPages = 2;
+static const int kMyStatsPages = 2;
 
 static int ClampPage(int page, int totalPages)
 {
@@ -132,7 +136,7 @@ static void AppendInfoLine(std::string& html, int key, const char* text)
 {
 	char line[512];
 	V_snprintf(line, sizeof(line),
-		"<font color='#aaaaaa'>[!%i]</font> <font color='#ffffff'>%s</font><br/>",
+		"<font color='#aaaaaa'>!%i</font> <font color='#ffffff'>%s</font><br/>",
 		key, text);
 	html += line;
 }
@@ -141,14 +145,73 @@ static void AppendActionLine(std::string& html, int key, const char* text)
 {
 	char line[512];
 	V_snprintf(line, sizeof(line),
-		"<font color='#88ff88'>[!%i]</font> <font color='#88ff88'>%s</font><br/>",
+		"<font color='#88ff88'>!%i</font> <font color='#88ff88'>%s</font><br/>",
 		key, text);
 	html += line;
 }
 
-static void AppendNavFooterSimple(std::string& html, bool showBack)
+static void AppendGreyLine(std::string& html, int key, const char* text)
 {
-	AppendNavFooter(html, 0, 1, showBack, false);
+	char line[512];
+	V_snprintf(line, sizeof(line),
+		"<font color='#888888'>!%i</font> <font color='#888888'>%s</font><br/>",
+		key, text);
+	html += line;
+}
+
+static void ShowMainMenu(int iSlot)
+{
+	PlayerInfo& pl = g_Players[iSlot];
+	if (!pl.loaded)
+	{
+		LRCenterPhrase(iSlot, "NotLoaded");
+		return;
+	}
+
+	int rankCount = (int)g_Cfg.ranksExp.size();
+	if (pl.level < 1) pl.level = 1;
+	if (pl.level > rankCount) pl.level = rankCount;
+
+	MenuState& m = s_Menu[iSlot];
+	m.page = ClampPage(m.page, kMainPages);
+	int page = m.page;
+
+	char rankLine[128], expLine[128], placeLine[128];
+	V_snprintf(rankLine, sizeof(rankLine), "Звание: Уровень %i", pl.level);
+
+	if (pl.level < rankCount)
+		V_snprintf(expLine, sizeof(expLine), "Опыт: %i / %i", pl.st.exp, ExpForNextLevel(pl.level));
+	else
+		V_snprintf(expLine, sizeof(expLine), "Опыт: %i", pl.st.exp);
+
+	V_snprintf(placeLine, sizeof(placeLine), "Место: %i из %i", pl.posTop, g_iDBCountPlayers);
+
+	std::string html;
+	AppendTitle(html, "Меню рангов");
+
+	if (page == 0)
+	{
+		AppendInfoLine(html, 1, rankLine);
+		AppendInfoLine(html, 2, expLine);
+		AppendInfoLine(html, 3, placeLine);
+		AppendActionLine(html, 4, "Моя статистика");
+		AppendActionLine(html, 5, "TOP 10");
+	}
+	else
+	{
+		AppendActionLine(html, 1, "Все ранги");
+	}
+
+	AppendNavFooter(html, page, kMainPages, false, true, "Выход");
+
+	m.screen = MenuScreen::Main;
+	m.backScreen = MenuScreen::None;
+	MenuShow(iSlot, html.c_str());
+}
+
+static void AppendNavFooterSimple(std::string& html, bool showBack, const char* closeLabel = "Выход")
+{
+	AppendNavFooter(html, 0, 1, showBack, false, closeLabel);
 }
 
 static void FetchPlaceThenShowMain(int iSlot)
@@ -172,35 +235,70 @@ static void FetchPlaceThenShowMain(int iSlot)
 		if (r.ok && r.RowCount())
 			g_Players[iSlot].posTop = r.GetInt(0, 0);
 
-		PlayerInfo& pl = g_Players[iSlot];
-		int rankCount = (int)g_Cfg.ranksExp.size();
-		if (pl.level < 1) pl.level = 1;
-		if (pl.level > rankCount) pl.level = rankCount;
-
-		char rankLine[128], expLine[128], placeLine[128];
-		V_snprintf(rankLine, sizeof(rankLine), "Звание: Уровень %i", pl.level);
-
-		if (pl.level < rankCount)
-			V_snprintf(expLine, sizeof(expLine), "Опыт: %i / %i", pl.st.exp, ExpForNextLevel(pl.level));
-		else
-			V_snprintf(expLine, sizeof(expLine), "Опыт: %i", pl.st.exp);
-
-		V_snprintf(placeLine, sizeof(placeLine), "Место: %i из %i", pl.posTop, g_iDBCountPlayers);
-
-		std::string html;
-		AppendTitle(html, "Меню рангов");
-		AppendInfoLine(html, 1, rankLine);
-		AppendInfoLine(html, 2, expLine);
-		AppendInfoLine(html, 3, placeLine);
-		AppendActionLine(html, 4, "Моя статистика");
-		AppendActionLine(html, 5, "TOP игроков");
-		AppendNavFooterSimple(html, false);
-
-		s_Menu[iSlot].screen = MenuScreen::Main;
-		s_Menu[iSlot].backScreen = MenuScreen::None;
-		s_Menu[iSlot].page = 0;
-		MenuShow(iSlot, html.c_str());
+		ShowMainMenu(iSlot);
 	});
+}
+
+static void ShowMyStatsMenu(int iSlot, MenuScreen back)
+{
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.loaded)
+	{
+		LRCenterPhrase(iSlot, "NotLoaded");
+		return;
+	}
+
+	MenuState& m = s_Menu[iSlot];
+	m.page = ClampPage(m.page, kMyStatsPages);
+	int page = m.page;
+
+	std::string html;
+	AppendTitle(html, "Моя статистика");
+
+	if (page == 0)
+	{
+		char timeStr[64];
+		FormatPlaytimeLong(TotalPlaytime(iSlot), timeStr, sizeof(timeStr));
+
+		char l2[128], l3[128], l4[128], l5[128];
+		V_snprintf(l2, sizeof(l2), "Сыграно: %s", timeStr);
+		V_snprintf(l3, sizeof(l3), "Убийств: %i", p.st.kills);
+		V_snprintf(l4, sizeof(l4), "Смертей: %i", p.st.deaths);
+		V_snprintf(l5, sizeof(l5), "Ассистов: %i", p.st.assists);
+
+		AppendActionLine(html, 1, "Данные за сессию");
+		AppendInfoLine(html, 2, l2);
+		AppendInfoLine(html, 3, l3);
+		AppendInfoLine(html, 4, l4);
+		AppendInfoLine(html, 5, l5);
+		AppendNavFooter(html, page, kMyStatsPages, back != MenuScreen::None, false, "Выход");
+	}
+	else
+	{
+		int hsPct = p.st.kills ? (p.st.headshots * 100 / p.st.kills) : 0;
+		float kd = StatKD(p.st.kills, p.st.deaths);
+		int accPct = p.st.shoots ? (p.st.hits * 100 / p.st.shoots) : 0;
+		int rounds = p.st.roundWin + p.st.roundLose;
+		int wrPct = rounds ? (p.st.roundWin * 100 / rounds) : 0;
+
+		char l1[128], l2[64], l3[64], l4[64];
+		V_snprintf(l1, sizeof(l1), "Хедшотов: %i (%i%%)", p.st.headshots, hsPct);
+		V_snprintf(l2, sizeof(l2), "KDR: %.2f", kd);
+		V_snprintf(l3, sizeof(l3), "Точность: %i%%", accPct);
+		V_snprintf(l4, sizeof(l4), "Винрейт: %i%%", wrPct);
+
+		AppendInfoLine(html, 1, l1);
+		AppendInfoLine(html, 2, l2);
+		AppendInfoLine(html, 3, l3);
+		AppendInfoLine(html, 4, l4);
+		if (g_Cfg.showResetStats)
+			AppendActionLine(html, 5, "Сбросить статистику");
+		AppendNavFooter(html, page, kMyStatsPages, true, false, "Выход");
+	}
+
+	m.screen = MenuScreen::MyStats;
+	m.backScreen = back;
+	MenuShow(iSlot, html.c_str());
 }
 
 static void ShowSessionMenu(int iSlot, MenuScreen back)
@@ -227,14 +325,17 @@ static void ShowSessionMenu(int iSlot, MenuScreen back)
 	V_snprintf(l6, sizeof(l6), "K/D: %s | место: %s", kdStr, posStr);
 
 	std::string html;
-	AppendTitle(html, "Меню рангов | Моя статистика");
+	if (back == MenuScreen::MyStats)
+		AppendTitle(html, "Данные за сессию");
+	else
+		AppendTitle(html, "Меню рангов | Данные за сессию");
 	AppendInfoLine(html, 1, l1);
 	AppendInfoLine(html, 2, l2);
 	AppendInfoLine(html, 3, l3);
 	AppendInfoLine(html, 4, l4);
 	AppendInfoLine(html, 5, l5);
 	AppendInfoLine(html, 6, l6);
-	AppendNavFooterSimple(html, back != MenuScreen::None);
+	AppendNavFooterSimple(html, back != MenuScreen::None, "Выход");
 
 	s_Menu[iSlot].screen = MenuScreen::Session;
 	s_Menu[iSlot].backScreen = back;
@@ -273,20 +374,12 @@ static void ShowAllRanksMenu(int iSlot)
 			V_snprintf(line, sizeof(line), "[%i] Уровень %i", g_Cfg.ranksExp[idx - 1], level);
 
 		if (achieved)
-		{
-			char grey[512];
-			V_snprintf(grey, sizeof(grey),
-				"<font color='#888888'>[!%i]</font> <font color='#888888'>%s</font><br/>",
-				i + 1, line);
-			html += grey;
-		}
+			AppendGreyLine(html, i + 1, line);
 		else
-		{
 			AppendInfoLine(html, i + 1, line);
-		}
 	}
 
-	AppendNavFooter(html, page, totalPages, true, false);
+	AppendNavFooter(html, page, totalPages, true, false, "Выход");
 
 	s_Menu[iSlot].screen = MenuScreen::AllRanks;
 	s_Menu[iSlot].backScreen = MenuScreen::Main;
@@ -306,7 +399,7 @@ static void ShowTopMenu(int iSlot)
 	if (byTime)
 		AppendTitle(html, "Меню рангов | TOP 10 | по активности");
 	else
-		AppendTitle(html, "Меню рангов | TOP 10 | по очкам опыта");
+		AppendTitle(html, "TOP 10 | по очкам опыта");
 
 	for (int i = 0; i < kItemsPerPage; i++)
 	{
@@ -332,7 +425,7 @@ static void ShowTopMenu(int iSlot)
 		AppendInfoLine(html, i + 1, line);
 	}
 
-	AppendNavFooter(html, m.page, totalPages, m.backScreen != MenuScreen::None, false);
+	AppendNavFooter(html, m.page, totalPages, m.backScreen != MenuScreen::None, false, "Выход");
 	MenuShow(iSlot, html.c_str());
 }
 
@@ -387,6 +480,7 @@ static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 
 void Menu_OpenLvl(int iSlot)
 {
+	s_Menu[iSlot].page = 0;
 	FetchPlaceThenShowMain(iSlot);
 }
 
@@ -424,7 +518,15 @@ bool Menu_TryHandleKey(int iSlot, int key)
 
 	if (key == 7)
 	{
-		if (m.screen == MenuScreen::AllRanks || m.screen == MenuScreen::TopExp || m.screen == MenuScreen::TopTime)
+		if (m.screen == MenuScreen::Main)
+		{
+			if (m.page > 0)
+			{
+				m.page--;
+				ShowMainMenu(iSlot);
+			}
+		}
+		else if (m.screen == MenuScreen::AllRanks || m.screen == MenuScreen::TopExp || m.screen == MenuScreen::TopTime)
 		{
 			if (m.page > 0)
 			{
@@ -436,7 +538,25 @@ bool Menu_TryHandleKey(int iSlot, int key)
 			}
 			else if (m.backScreen == MenuScreen::Main)
 			{
-				FetchPlaceThenShowMain(iSlot);
+				m.page = (m.screen == MenuScreen::AllRanks) ? 1 : 0;
+				ShowMainMenu(iSlot);
+			}
+			else
+			{
+				MenuClose(iSlot);
+			}
+		}
+		else if (m.screen == MenuScreen::MyStats)
+		{
+			if (m.page > 0)
+			{
+				m.page--;
+				ShowMyStatsMenu(iSlot, m.backScreen);
+			}
+			else if (m.backScreen == MenuScreen::Main)
+			{
+				m.page = 0;
+				ShowMainMenu(iSlot);
 			}
 			else
 			{
@@ -445,7 +565,13 @@ bool Menu_TryHandleKey(int iSlot, int key)
 		}
 		else if (m.backScreen == MenuScreen::Main)
 		{
-			FetchPlaceThenShowMain(iSlot);
+			m.page = 0;
+			ShowMainMenu(iSlot);
+		}
+		else if (m.backScreen == MenuScreen::MyStats)
+		{
+			m.page = 0;
+			ShowMyStatsMenu(iSlot, MenuScreen::Main);
 		}
 		else
 		{
@@ -456,6 +582,26 @@ bool Menu_TryHandleKey(int iSlot, int key)
 
 	if (key == 8)
 	{
+		if (m.screen == MenuScreen::Main)
+		{
+			if (m.page + 1 < kMainPages)
+			{
+				m.page++;
+				ShowMainMenu(iSlot);
+			}
+			return true;
+		}
+
+		if (m.screen == MenuScreen::MyStats)
+		{
+			if (m.page + 1 < kMyStatsPages)
+			{
+				m.page++;
+				ShowMyStatsMenu(iSlot, m.backScreen);
+			}
+			return true;
+		}
+
 		if (m.screen == MenuScreen::AllRanks)
 		{
 			int rankCount = (int)g_Cfg.ranksExp.size();
@@ -481,14 +627,30 @@ bool Menu_TryHandleKey(int iSlot, int key)
 	switch (m.screen)
 	{
 		case MenuScreen::Main:
-			if (key == 4)
-				ShowSessionMenu(iSlot, MenuScreen::Main);
-			else if (key == 5)
-				FetchTopThenShow(iSlot, false, MenuScreen::Main);
-			else if (key == 1)
+			if (m.page == 0)
+			{
+				if (key == 4)
+				{
+					m.page = 0;
+					ShowMyStatsMenu(iSlot, MenuScreen::Main);
+				}
+				else if (key == 5)
+					FetchTopThenShow(iSlot, false, MenuScreen::Main);
+			}
+			else if (m.page == 1 && key == 1)
 			{
 				m.page = 0;
 				ShowAllRanksMenu(iSlot);
+			}
+			break;
+
+		case MenuScreen::MyStats:
+			if (m.page == 0 && key == 1)
+				ShowSessionMenu(iSlot, MenuScreen::MyStats);
+			else if (m.page == 1 && key == 5 && g_Cfg.showResetStats)
+			{
+				MenuClose(iSlot);
+				Commands_RequestResetStats(iSlot);
 			}
 			break;
 

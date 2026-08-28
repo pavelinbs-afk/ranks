@@ -149,6 +149,8 @@ static const PhraseSpec s_Specs[] = {
 
 	{"ResetStatsDone",     ""},
 	{"ResetStatsCooldown", "ii"},    // hours, minutes
+	{"ResetStatsConfirm",  ""},
+	{"ResetStatsCancelled",""},
 	{"NotLoaded",          ""},
 };
 

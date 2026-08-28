@@ -85,26 +85,7 @@ static void CmdTop(int iSlot, bool byTime)
 
 static void CmdResetStats(int iSlot)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRCenterPhrase(iSlot, "NotLoaded");
-		return;
-	}
-	if (!g_Cfg.showResetStats)
-		return;
-
-	time_t now = time(nullptr);
-	if (p.resetCooldownUntil > now)
-	{
-		int left = (int)(p.resetCooldownUntil - now);
-		LRCenterPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
-		return;
-	}
-
-	p.resetCooldownUntil = now + g_Cfg.resetCooldown;
-	ResetPlayerStats(iSlot);
-	LRCenterPhrase(iSlot, "ResetStatsDone");
+	Commands_RequestResetStats(iSlot);
 }
 
 // Copies the bare command word ("!session extra" -> "session").
@@ -193,7 +174,134 @@ struct PendingCmd
 	char text[64];
 };
 
+struct PendingSay
+{
+	int iSlot;
+	uint64_t steam64;
+	char text[256];
+};
+
 static std::vector<PendingCmd> s_Pending;
+static std::vector<PendingSay> s_PendingSay;
+
+static bool s_PendingReset[LR_MAXPLAYERS] = {};
+static time_t s_PendingResetUntil[LR_MAXPLAYERS] = {};
+
+static bool IsResetConfirm(const char* text)
+{
+	if (!text || !*text)
+		return false;
+
+	char buf[256];
+	V_strncpy(buf, text, sizeof(buf));
+	char* start = buf;
+	while (*start == ' ')
+		start++;
+	int len = (int)V_strlen(start);
+	while (len > 0 && start[len - 1] == ' ')
+		start[--len] = '\0';
+
+	return !V_stricmp(start, "да") || !V_stricmp(start, "yes");
+}
+
+static void ClearPendingReset(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+	s_PendingReset[iSlot] = false;
+	s_PendingResetUntil[iSlot] = 0;
+}
+
+static void ExecuteResetStats(int iSlot)
+{
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.loaded)
+	{
+		LRPrintPhrase(iSlot, "NotLoaded");
+		return;
+	}
+	if (!g_Cfg.showResetStats)
+		return;
+
+	time_t now = time(nullptr);
+	if (p.resetCooldownUntil > now)
+	{
+		int left = (int)(p.resetCooldownUntil - now);
+		LRPrintPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
+		return;
+	}
+
+	p.resetCooldownUntil = now + g_Cfg.resetCooldown;
+	ResetPlayerStats(iSlot);
+	LRPrintPhrase(iSlot, "ResetStatsDone");
+}
+
+void Commands_RequestResetStats(int iSlot)
+{
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.loaded)
+	{
+		LRCenterPhrase(iSlot, "NotLoaded");
+		return;
+	}
+	if (!g_Cfg.showResetStats)
+		return;
+
+	time_t now = time(nullptr);
+	if (p.resetCooldownUntil > now)
+	{
+		int left = (int)(p.resetCooldownUntil - now);
+		LRCenterPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
+		return;
+	}
+
+	s_PendingReset[iSlot] = true;
+	s_PendingResetUntil[iSlot] = now + 60;
+	LRPrintPhrase(iSlot, "ResetStatsConfirm");
+}
+
+bool Commands_IsAwaitingResetConfirm(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !s_PendingReset[iSlot])
+		return false;
+
+	time_t now = time(nullptr);
+	if (now > s_PendingResetUntil[iSlot])
+	{
+		ClearPendingReset(iSlot);
+		return false;
+	}
+	return true;
+}
+
+void Commands_QueuePendingSay(int iSlot, const char* text)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !text)
+		return;
+
+	PendingSay p;
+	p.iSlot = iSlot;
+	p.steam64 = g_Players[iSlot].steam64;
+	V_snprintf(p.text, sizeof(p.text), "%s", text);
+	s_PendingSay.push_back(p);
+}
+
+void Commands_OnDisconnect(int iSlot)
+{
+	ClearPendingReset(iSlot);
+}
+
+static void HandlePendingSay(int iSlot, const char* text)
+{
+	if (!Commands_IsAwaitingResetConfirm(iSlot))
+		return;
+
+	ClearPendingReset(iSlot);
+	if (IsResetConfirm(text))
+		ExecuteResetStats(iSlot);
+	else
+		LRPrintPhrase(iSlot, "ResetStatsCancelled");
+}
 
 void Commands_QueueChat(int iSlot, const char* text)
 {
@@ -209,6 +317,19 @@ void Commands_QueueChat(int iSlot, const char* text)
 
 void Commands_ProcessQueue()
 {
+	if (!s_PendingSay.empty())
+	{
+		std::vector<PendingSay> sayBatch;
+		sayBatch.swap(s_PendingSay);
+
+		for (const PendingSay& p : sayBatch)
+		{
+			if (g_Players[p.iSlot].steam64 != p.steam64)
+				continue;
+			HandlePendingSay(p.iSlot, p.text);
+		}
+	}
+
 	if (s_Pending.empty())
 		return;
 

@@ -275,6 +275,16 @@
 		"ru"	"Сброс будет доступен через {RED}%i ч. %i мин.{DEFAULT}"
 		"en"	"Reset available in {RED}%ih %im{DEFAULT}"
 	}
+	"ResetStatsConfirm"
+	{
+		"ru"	"Напишите {RED}да{DEFAULT} для сброса статистики."
+		"en"	"Type {RED}yes{DEFAULT} to reset your stats."
+	}
+	"ResetStatsCancelled"
+	{
+		"ru"	"Сброс статистики отменён."
+		"en"	"Stats reset cancelled."
+	}
 	"NotLoaded"
 	{
 		"ru"	"Ваша статистика ещё загружается, попробуйте позже."

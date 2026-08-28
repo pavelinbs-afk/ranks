@@ -221,6 +221,9 @@ float StatKD(int kills, int deaths);
 // "5ч 07м" / "12м 30с" — human duration for chat.
 void FormatDuration(int64_t seconds, char* out, int outSize);
 
+// "528 ч. 29 м. 47 сек." — long form for stats menu.
+void FormatPlaytimeLong(int64_t seconds, char* out, int outSize);
+
 // Central exp mutation: applies floors, session stats, rank check, chat message.
 // Returns true if the change was applied (player ready + stats allowed or bypassed).
 bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions = false);

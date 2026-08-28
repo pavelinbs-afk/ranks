@@ -8,6 +8,10 @@
 // later, after the chat line has gone out.
 bool Commands_IsChatCommand(int iSlot, const char* text);
 void Commands_QueueChat(int iSlot, const char* text);
+bool Commands_IsAwaitingResetConfirm(int iSlot);
+void Commands_QueuePendingSay(int iSlot, const char* text);
+void Commands_RequestResetStats(int iSlot);
+void Commands_OnDisconnect(int iSlot);
 
 // Runs whatever the say hook queued. Call once per GameFrame.
 void Commands_ProcessQueue();

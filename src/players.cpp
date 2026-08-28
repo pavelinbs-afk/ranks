@@ -141,6 +141,16 @@ void FormatDuration(int64_t seconds, char* out, int outSize)
 		V_snprintf(out, outSize, "%iм %02iс", m, s);
 }
 
+void FormatPlaytimeLong(int64_t seconds, char* out, int outSize)
+{
+	if (seconds < 0)
+		seconds = 0;
+	int h = (int)(seconds / 3600);
+	int m = (int)(seconds / 60 % 60);
+	int s = (int)(seconds % 60);
+	V_snprintf(out, outSize, "%i ч. %i м. %i сек.", h, m, s);
+}
+
 static void RefreshName(int iSlot)
 {
 	const char* name = g_pEngine->GetClientConVarValue(CPlayerSlot(iSlot), "name");

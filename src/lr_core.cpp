@@ -460,6 +460,7 @@ void LRCorePlugin::Hook_ClientDisconnect(CPlayerSlot slot, ENetworkDisconnection
 
 	SavePlayer(iSlot, true);
 	Menu_OnDisconnect(iSlot);
+	Commands_OnDisconnect(iSlot);
 }
 
 void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandContext& ctx, const CCommand& args)
@@ -471,7 +472,9 @@ void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandCont
 		if (!V_stricmp(name, "say") || !V_stricmp(name, "say_team"))
 		{
 			const char* text = args[1];
-			if (Commands_IsChatCommand(iSlot, text))
+			if (Commands_IsAwaitingResetConfirm(iSlot))
+				Commands_QueuePendingSay(iSlot, text);
+			else if (Commands_IsChatCommand(iSlot, text))
 			{
 				// Run it next frame: this hook fires before the engine echoes
 				// the player's own line, so printing here would put the answer
