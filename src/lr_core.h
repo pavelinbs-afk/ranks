@@ -56,25 +56,23 @@ struct LRSettings
 	char tableName[64];
 	char language[16];
 	int  serverId;
-	int  typeStatistics;   // 0 funded, 1 rating extended, 2 rating simple
-	int  minPlayers;
+	int  minPlayers;       // humans for full exp; 3-4 → 1 exp, <3 → 0
 	bool showResetStats;
 	int  resetCooldown;
 	int  showUsualMessage; // 0/1/2
-	bool showSpawnMessage;
 	bool showLevelUp, showLevelDown, showAllLevelUp, showAllLevelDown;
 	bool showRankMessage;
 	int  topCount;
 	int  startPoints;
 	bool giveExpRoundEnd;
 	bool blockWarmup;
+	bool blockCustomRound; // VIP custom rounds (lr_customround)
 	bool allAgainstAll;
 	int  cleanDbDays;
 	int  saveMode;
 
 	// exp amounts (positive numbers; sign applied at call sites)
 	int expKill, expKillBot, expDeath, expDeathBot;
-	int killCoeffPct; // 50..150
 	int expHeadshot, expAssist, expSuicide, expTeamkill;
 	int expRoundWin, expRoundLose, expMvp;
 	int expBombPlant, expBombDefuse, expBombDrop, expBombPickup;
@@ -84,6 +82,12 @@ struct LRSettings
 	// periodic exp for time spent in game (independent of player count)
 	int timeExpAmount;     // exp per interval (0 = feature off)
 	int timeExpInterval;   // seconds between grants
+
+	// coins (MySQL `coins` column)
+	int coinsIntervalSec;    // active team seconds between grants (0 = off)
+	int coinsIntervalAmount; // coins per interval (default 10 / 10 min)
+	int coinsMvp;
+	int coinsMultikill;
 
 	// ranks (level thresholds, ascending; level i+1 requires ranksExp[i])
 	std::vector<int> ranksExp;
@@ -130,9 +134,12 @@ struct PlayerInfo
 	int   level = 0;           // 1-based rank index, 0 = none yet
 	PlayerStats st;            // persistent totals
 	PlayerStats sess;          // this-session deltas
-	int64_t dbPlaytime = 0;    // seconds accumulated in DB
-	time_t  sessionStart = 0;  // baseline for playtime accumulation; SavePlayer moves it
-	time_t  connectTime = 0;   // set once on connect, never moved: the session clock
+	int64_t dbPlaytime = 0;       // active team seconds banked in DB
+	int64_t sessionActiveSec = 0; // active team seconds this session (not yet flushed)
+	time_t  connectTime = 0;      // session clock for !session
+
+	int coins = 0;
+	int activeSecSinceCoin = 0;   // active seconds toward next interval coin grant
 
 	int posTop = 0, posTopTime = 0;
 	int sessPosTop = 0, sessPosTopTime = 0;
@@ -177,7 +184,8 @@ extern LRTabSettings g_TabCfg;
 extern PlayerInfo g_Players[LR_MAXPLAYERS];
 
 extern bool g_bCoreReady;        // DB connected + table ready
-extern bool g_bAllowStatistic;   // enough players / not warmup
+extern bool g_bAllowStatistic;   // not warmup / not custom round
+extern bool g_bCustomRoundActive; // set by lr_customround (VIP integration)
 extern int  g_iDBCountPlayers;
 
 inline CGlobalVars* GetGlobals()
@@ -197,11 +205,12 @@ uint32_t PlayerGeneration(int iSlot);
 // player is a real, fully authenticated human with loaded stats
 bool IsPlayerReady(int iSlot);
 
-int LevelFromExp(int exp);
+void NormalizeRankState(int& level, int& exp);
+int ExpForNextLevel(int level);
 void CheckRank(int iSlot, bool bNotify = true);
 
 // Total playtime in seconds: what is banked in the DB plus the time accrued
-// since the last save (sessionStart moves on every save, connectTime does not).
+// since the last save (sessionActiveSec moves on every save, connectTime does not).
 int64_t TotalPlaytime(int iSlot);
 
 // Seconds since the player connected (0 if not tracked yet).
@@ -227,6 +236,15 @@ void ResetPlayerStats(int iSlot);
 
 // Periodic exp for time in game; call once per game frame.
 void GiveTimeExp();
+
+// T/CT only — not spectator, not hide (team none).
+bool IsPlayerOnActiveTeam(int iSlot);
+
+// Active team playtime + interval coins; call once per game frame.
+void TickActivePlaytime();
+
+// Returns false if player not ready or stats blocked (unless bypassRestrictions).
+bool GiveCoins(int iSlot, int amount, const char* phraseKey, bool bypassRestrictions = false);
 
 // API hook broadcast (implemented in lr_core.cpp)
 void ApiFireCoreReady();

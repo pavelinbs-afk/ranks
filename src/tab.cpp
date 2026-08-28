@@ -131,6 +131,19 @@ void Tab_OnPlayerLoaded(int iSlot)
 	g_Players[iSlot].tabRefreshUntil = g_Players[iSlot].tabIconsAt + g_TabCfg.iconsRefresh;
 }
 
+void Tab_OnLevelChanged(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !g_Players[iSlot].loaded)
+		return;
+
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
+	g_Players[iSlot].revealSent = false;
+	g_Players[iSlot].tabIconsApplied = false;
+	g_Players[iSlot].tabIconsAt = now + g_TabCfg.iconsDelay;
+	g_Players[iSlot].tabRefreshUntil = g_Players[iSlot].tabIconsAt + g_TabCfg.iconsRefresh;
+}
+
 void Tab_OnGameFrame()
 {
 	if (!g_TabCfg.enabled || !g_bCoreReady)

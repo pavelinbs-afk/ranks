@@ -8,5 +8,11 @@ void Events_Unregister();
 // Map change: drop cached gamerules, re-register listeners.
 void Events_OnStartupServer();
 
-// Recomputes g_bAllowStatistic (min players / warmup).
+// Recomputes g_bAllowStatistic (warmup / VIP custom round).
 void CheckAllowStatistic(bool roundStart = false);
+
+// Humans on T/CT (not spec).
+int CountHumansOnTeams();
+
+// Scale exp delta by online: under 3 → 0, 3-4 → ±1, at/above threshold → full.
+int ScaleExpByPlayerCount(int delta);

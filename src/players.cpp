@@ -2,11 +2,15 @@
 #include "players.h"
 #include "chat.h"
 #include "db.h"
+#include "events.h"
 #include "schema.h"
 #include "tab.h"
 
+#include <climits>
+
 PlayerInfo g_Players[LR_MAXPLAYERS];
 int g_iDBCountPlayers = 0;
+bool g_bCustomRoundActive = false;
 
 // Kept outside PlayerInfo on purpose: PlayerInfo::Reset() assigns a fresh
 // instance over itself, which would roll the counter back to zero.
@@ -49,17 +53,55 @@ bool IsPlayerReady(int iSlot)
 	PlayerInfo& p = g_Players[iSlot];
 	if (!p.loaded || !p.steam64)
 		return false;
-	if (!GetControllerBySlot(iSlot))
-		return false;
-	return g_pEngine->IsClientFullyAuthenticated(CPlayerSlot(iSlot));
+
+	// ClientPutInServer already supplied a non-zero XUID and LoadPlayer has
+	// finished the database lookup. IsClientFullyAuthenticated() can still be
+	// false after the player is active on some CS2 builds, which made every
+	// ChangeExp call fail silently.
+	return GetControllerBySlot(iSlot) != nullptr;
 }
 
-int LevelFromExp(int exp)
+void NormalizeRankState(int& level, int& exp)
 {
-	int level = (int)g_Cfg.ranksExp.size();
-	while (level > 1 && g_Cfg.ranksExp[level - 1] > exp)
-		level--;
-	return level;
+	int rankCount = (int)g_Cfg.ranksExp.size();
+	if (rankCount <= 0)
+		return;
+	if (exp < 0)
+		exp = 0;
+
+	// Ranks contains absolute cumulative-XP thresholds. rank_21 = 60000 means
+	// level 21 at 60000 total XP — do not sum rank values together.
+	level = 1;
+	for (int i = 1; i < rankCount; i++)
+	{
+		if (exp < g_Cfg.ranksExp[i])
+			break;
+		level = i + 1;
+	}
+}
+
+int ExpForNextLevel(int level)
+{
+	int rankCount = (int)g_Cfg.ranksExp.size();
+	if (level < 1 || level >= rankCount)
+		return 0;
+
+	return g_Cfg.ranksExp[level];
+}
+
+int GetPlayerTeamNum(int iSlot)
+{
+	CEntityInstance* pController = GetControllerBySlot(iSlot);
+	if (!pController)
+		return 0;
+	return Schema_Get<uint8_t>(pController, "CBaseEntity", "m_iTeamNum");
+}
+
+bool IsPlayerOnActiveTeam(int iSlot)
+{
+	int team = GetPlayerTeamNum(iSlot);
+	// 2 = T, 3 = CT. Spectator (1) and hide/none (0) do not count.
+	return team == 2 || team == 3;
 }
 
 int64_t TotalPlaytime(int iSlot)
@@ -67,9 +109,7 @@ int64_t TotalPlaytime(int iSlot)
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return 0;
 	PlayerInfo& p = g_Players[iSlot];
-	if (!p.sessionStart)
-		return p.dbPlaytime;
-	return p.dbPlaytime + (int64_t)(time(nullptr) - p.sessionStart);
+	return p.dbPlaytime + p.sessionActiveSec;
 }
 
 int64_t SessionTime(int iSlot)
@@ -114,22 +154,22 @@ void CheckRank(int iSlot, bool bNotify)
 	if (g_Cfg.ranksExp.empty())
 		return;
 
-	int newLevel = LevelFromExp(p.st.exp);
 	int oldLevel = p.level;
+	NormalizeRankState(p.level, p.st.exp);
+	int newLevel = p.level;
 	if (newLevel == oldLevel)
 		return;
 
-	p.level = newLevel;
+	Tab_OnLevelChanged(iSlot);
 
 	if (bNotify && oldLevel > 0)
 	{
 		bool up = newLevel > oldLevel;
-		const char* rankName = Phrase(g_Cfg.ranksKey[newLevel - 1].c_str());
 
 		if (up && g_Cfg.showLevelUp)
-			LRPrintPhrase(iSlot, "LevelUp", rankName);
+			LRPrintPhrase(iSlot, "LevelUp", newLevel);
 		else if (!up && g_Cfg.showLevelDown)
-			LRPrintPhrase(iSlot, "LevelDown", rankName);
+			LRPrintPhrase(iSlot, "LevelDown", newLevel);
 
 		if ((up && g_Cfg.showAllLevelUp) || (!up && g_Cfg.showAllLevelDown))
 		{
@@ -137,7 +177,12 @@ void CheckRank(int iSlot, bool bNotify)
 			for (int i = 0; i < LR_MAXPLAYERS; i++)
 			{
 				if (i != iSlot && g_Players[i].loaded)
-					LRPrintPhrase(i, up ? "LevelUpAll" : "LevelDownAll", p.name, rankName);
+				{
+					if (up)
+						LRPrintPhrase(i, "LevelUpAll", p.name, newLevel);
+					else
+						LRPrintPhrase(i, "LevelDownAll", p.name, newLevel);
+				}
 			}
 		}
 
@@ -155,15 +200,21 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 	if (!bypassRestrictions && !g_bAllowStatistic)
 		return false;
 
+	if (!bypassRestrictions)
+		delta = ScaleExpByPlayerCount(delta);
+
+	if (delta == 0)
+		return true;
+
 	if (delta != 0)
 	{
 		PlayerInfo& p = g_Players[iSlot];
-		int floorExp = g_Cfg.typeStatistics ? 400 : 0;
 		int oldExp = p.st.exp;
 
-		p.st.exp += delta;
-		if (p.st.exp < floorExp)
-			p.st.exp = floorExp;
+		int64_t rawExp = (int64_t)p.st.exp + delta;
+		if (rawExp > INT_MAX) rawExp = INT_MAX;
+		if (rawExp < 0) rawExp = 0;
+		p.st.exp = (int)rawExp;
 
 		int applied = p.st.exp - oldExp;
 		p.roundExp += applied;
@@ -175,16 +226,80 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 		if (g_Cfg.showUsualMessage == 1 && phraseKey)
 		{
 			char sDelta[16];
-			V_snprintf(sDelta, sizeof(sDelta), "%s%i", delta > 0 ? "+" : "", delta);
-			LRPrintPhrase(iSlot, phraseKey, p.st.exp, sDelta);
+			V_snprintf(sDelta, sizeof(sDelta), "%s%i", applied > 0 ? "+" : "", applied);
+			LRCenterPhrase(iSlot, phraseKey, sDelta, p.st.exp);
 		}
 	}
 
 	return true;
 }
 
-// Periodic exp for time spent in game. Granted with bypassRestrictions, so it
-// does not depend on the player count (lr_minplayers_count) at all.
+bool GiveCoins(int iSlot, int amount, const char* phraseKey, bool bypassRestrictions)
+{
+	if (!IsPlayerReady(iSlot))
+		return false;
+	if (!bypassRestrictions && !g_bAllowStatistic)
+		return false;
+
+	if (!bypassRestrictions)
+		amount = ScaleExpByPlayerCount(amount);
+
+	if (amount == 0)
+		return true;
+
+	PlayerInfo& p = g_Players[iSlot];
+	int64_t raw = (int64_t)p.coins + amount;
+	if (raw > INT_MAX) raw = INT_MAX;
+	if (raw < 0) raw = 0;
+	p.coins = (int)raw;
+
+	if (g_Cfg.showUsualMessage == 1 && phraseKey)
+	{
+		char sDelta[16];
+		V_snprintf(sDelta, sizeof(sDelta), "%s%i", amount > 0 ? "+" : "", amount);
+		LRCenterPhrase(iSlot, phraseKey, sDelta, p.coins);
+	}
+
+	return true;
+}
+
+void TickActivePlaytime()
+{
+	if (!g_bCoreReady)
+		return;
+
+	static time_t s_lastTick = 0;
+	time_t now = time(nullptr);
+	if (now == s_lastTick)
+		return;
+	s_lastTick = now;
+
+	for (int i = 0; i < LR_MAXPLAYERS; i++)
+	{
+		PlayerInfo& p = g_Players[i];
+		if (!p.loaded || !IsPlayerReady(i))
+			continue;
+		if (!IsPlayerOnActiveTeam(i))
+			continue;
+
+		p.sessionActiveSec++;
+
+		if (g_Cfg.coinsIntervalSec <= 0 || g_Cfg.coinsIntervalAmount <= 0)
+			continue;
+
+		p.activeSecSinceCoin++;
+		if (p.activeSecSinceCoin < g_Cfg.coinsIntervalSec)
+			continue;
+
+		p.activeSecSinceCoin = 0;
+		if (GiveCoins(i, g_Cfg.coinsIntervalAmount, "CoinInterval"))
+		{
+			if (g_Cfg.saveMode)
+				SavePlayer(i);
+		}
+	}
+}
+
 void GiveTimeExp()
 {
 	if (!g_bCoreReady || g_Cfg.timeExpAmount == 0 || g_Cfg.timeExpInterval <= 0)
@@ -193,7 +308,7 @@ void GiveTimeExp()
 	static time_t s_lastCheck = 0;
 	time_t now = time(nullptr);
 	if (now == s_lastCheck)
-		return; // once per second is plenty
+		return;
 	s_lastCheck = now;
 
 	for (int i = 0; i < LR_MAXPLAYERS; i++)
@@ -204,7 +319,7 @@ void GiveTimeExp()
 
 		if (p.timeExpAt == 0)
 		{
-			p.timeExpAt = now + g_Cfg.timeExpInterval; // first grant one interval from now
+			p.timeExpAt = now + g_Cfg.timeExpInterval;
 			continue;
 		}
 		if (now < p.timeExpAt)
@@ -229,14 +344,15 @@ void RefreshTopPositions(int iSlot)
 
 	uint64_t steam64 = p.steam64;
 	uint32_t gen = s_PlayerGen[iSlot];
-	int64_t playtime = TotalPlaytime(iSlot); // guards sessionStart == 0
+	int64_t playtime = TotalPlaytime(iSlot);
 
 	char q[512];
 	V_snprintf(q, sizeof(q),
 		"SELECT "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `value` >= %i AND `lastconnect`) AS exppos, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`) AS exppos, "
 		"(SELECT COUNT(`steam`) FROM `%s` WHERE `playtime` >= %lld AND `lastconnect`) AS timepos;",
-		g_Cfg.tableName, p.st.exp, g_Cfg.tableName, (long long)playtime);
+		g_Cfg.tableName, p.level, p.level, p.st.exp,
+		g_Cfg.tableName, (long long)playtime);
 
 	DB_Query(q, [iSlot, steam64, gen](const DBResult& r) {
 		PlayerInfo& p = g_Players[iSlot];
@@ -257,32 +373,26 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 {
 	PlayerInfo& p = g_Players[iSlot];
 
-	// A map change re-runs ClientPutInServer for players who stayed, and the
-	// Reset() below would drop everything not yet written out. With
-	// lr_db_savedataplayer_mode 0 (save on disconnect only) that is a whole
-	// map's worth of stats. Flush first; the DB worker is FIFO, so this write
-	// lands before the SELECT below reads it back.
 	if (flushCurrent && p.loaded && p.steam64 == steam64)
 		SavePlayer(iSlot);
 
-	s_PlayerGen[iSlot]++; // invalidate any query still in flight for this slot
+	s_PlayerGen[iSlot]++;
 	p.Reset();
 	if (!steam64)
 		return;
 
 	p.steam64 = steam64;
 	Steam64ToSteamId(steam64, p.steamId, sizeof(p.steamId));
-	p.sessionStart = time(nullptr);
-	p.connectTime = p.sessionStart; // session clock: never moved by saves
+	p.connectTime = time(nullptr);
 
 	if (!g_bCoreReady)
-		return; // core-ready handler re-runs LoadPlayer for connected players
+		return;
 
 	char q[1024];
 	V_snprintf(q, sizeof(q),
-		"SELECT `value`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, "
-		"`round_win`, `round_lose`, `playtime`, `reset_cooldown`, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `value` >= `p`.`value` AND `lastconnect`) AS exppos, "
+		"SELECT `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, "
+		"`round_win`, `round_lose`, `playtime`, `coins`, `reset_cooldown`, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND `lastconnect`) AS exppos, "
 		"(SELECT COUNT(`steam`) FROM `%s` WHERE `playtime` >= `p`.`playtime` AND `lastconnect`) AS timepos "
 		"FROM `%s` `p` WHERE `steam` = '%s' LIMIT 1;",
 		g_Cfg.tableName, g_Cfg.tableName, g_Cfg.tableName, p.steamId);
@@ -290,7 +400,7 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 	DB_Query(q, [iSlot, steam64, gen = s_PlayerGen[iSlot]](const DBResult& r) {
 		PlayerInfo& p = g_Players[iSlot];
 		if (p.steam64 != steam64 || s_PlayerGen[iSlot] != gen)
-			return; // player left / slot reused while the query was in flight
+			return;
 		if (!r.ok)
 			return;
 
@@ -299,48 +409,47 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 		if (r.RowCount())
 		{
 			p.st.exp       = r.GetInt(0, 0);
-			p.st.kills     = r.GetInt(0, 1);
-			p.st.deaths    = r.GetInt(0, 2);
-			p.st.shoots    = r.GetInt(0, 3);
-			p.st.hits      = r.GetInt(0, 4);
-			p.st.headshots = r.GetInt(0, 5);
-			p.st.assists   = r.GetInt(0, 6);
-			p.st.roundWin  = r.GetInt(0, 7);
-			p.st.roundLose = r.GetInt(0, 8);
-			p.dbPlaytime   = r.GetInt64(0, 9);
-			p.resetCooldownUntil = (time_t)r.GetInt64(0, 10);
-			p.posTop       = r.GetInt(0, 11);
-			p.posTopTime   = r.GetInt(0, 12);
-			p.level = LevelFromExp(p.st.exp);
+			p.level        = r.GetInt(0, 1);
+			p.st.kills     = r.GetInt(0, 2);
+			p.st.deaths    = r.GetInt(0, 3);
+			p.st.shoots    = r.GetInt(0, 4);
+			p.st.hits      = r.GetInt(0, 5);
+			p.st.headshots = r.GetInt(0, 6);
+			p.st.assists   = r.GetInt(0, 7);
+			p.st.roundWin  = r.GetInt(0, 8);
+			p.st.roundLose = r.GetInt(0, 9);
+			p.dbPlaytime   = r.GetInt64(0, 10);
+			p.coins        = r.GetInt(0, 11);
+			p.resetCooldownUntil = (time_t)r.GetInt64(0, 12);
+			p.posTop       = r.GetInt(0, 13);
+			p.posTopTime   = r.GetInt(0, 14);
+
+			NormalizeRankState(p.level, p.st.exp);
 			p.loaded = true;
 
-			// 1024, not 512: an escaped 127-char name alone can reach 254 bytes,
-			// which left this query 8 bytes short of silent truncation.
 			char q2[1024];
 			V_snprintf(q2, sizeof(q2),
-				"UPDATE `%s` SET `online` = %i, `lastconnect` = %lld, `steamid64` = %llu, `name` = '%s', `rank` = %i "
+				"UPDATE `%s` SET `online` = %i, `lastconnect` = %lld, `steamid64` = %llu, `name` = '%s', `rank` = %i, `value` = %i, `xp_cumulative` = 1 "
 				"WHERE `steam` = '%s';",
 				g_Cfg.tableName, g_Cfg.serverId, (long long)time(nullptr),
-				(unsigned long long)p.steam64, DB_Escape(p.name).c_str(), p.level, p.steamId);
+				(unsigned long long)p.steam64, DB_Escape(p.name).c_str(), p.level, p.st.exp, p.steamId);
 			DB_Query(q2);
 		}
 		else
 		{
-			int startExp = g_Cfg.typeStatistics ? 1000 : g_Cfg.startPoints;
 			p.st = PlayerStats{};
-			p.st.exp = startExp;
-			p.level = LevelFromExp(startExp);
+			p.level = 1;
 			p.dbPlaytime = 0;
 			p.loaded = true;
 			g_iDBCountPlayers++;
 
 			char q2[768];
 			V_snprintf(q2, sizeof(q2),
-				"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `lastconnect`, `online`) "
-				"VALUES ('%s', %llu, '%s', %i, %i, %lld, %i) "
+				"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `lastconnect`, `online`, `xp_cumulative`) "
+				"VALUES ('%s', %llu, '%s', %i, %i, %lld, %i, 1) "
 				"ON DUPLICATE KEY UPDATE `steamid64` = VALUES(`steamid64`), `online` = VALUES(`online`);",
 				g_Cfg.tableName, p.steamId, (unsigned long long)p.steam64,
-				DB_Escape(p.name).c_str(), startExp, p.level, (long long)time(nullptr), g_Cfg.serverId);
+				DB_Escape(p.name).c_str(), p.st.exp, p.level, (long long)time(nullptr), g_Cfg.serverId);
 			DB_Query(q2);
 		}
 
@@ -368,19 +477,20 @@ void SavePlayer(int iSlot, bool disconnect)
 	char q[1536];
 	V_snprintf(q, sizeof(q),
 		"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, "
-		"`headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`, `online`, `reset_cooldown`) "
-		"VALUES ('%s', %llu, '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %lld, %lld, %i, %lld) "
+		"`headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `coins`, `lastconnect`, `online`, `reset_cooldown`, `xp_cumulative`) "
+		"VALUES ('%s', %llu, '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %lld, %i, %lld, %i, %lld, 1) "
 		"ON DUPLICATE KEY UPDATE "
 		"`steamid64` = VALUES(`steamid64`), `name` = VALUES(`name`), `value` = VALUES(`value`), "
 		"`rank` = VALUES(`rank`), `kills` = VALUES(`kills`), `deaths` = VALUES(`deaths`), "
 		"`shoots` = VALUES(`shoots`), `hits` = VALUES(`hits`), `headshots` = VALUES(`headshots`), "
 		"`assists` = VALUES(`assists`), `round_win` = VALUES(`round_win`), `round_lose` = VALUES(`round_lose`), "
-		"`playtime` = VALUES(`playtime`), `lastconnect` = VALUES(`lastconnect`), `online` = VALUES(`online`), "
-		"`reset_cooldown` = VALUES(`reset_cooldown`);",
+		"`playtime` = VALUES(`playtime`), `coins` = VALUES(`coins`), `lastconnect` = VALUES(`lastconnect`), `online` = VALUES(`online`), "
+		"`reset_cooldown` = VALUES(`reset_cooldown`), `xp_cumulative` = 1;",
 		g_Cfg.tableName, p.steamId, (unsigned long long)p.steam64, DB_Escape(p.name).c_str(),
 		p.st.exp, p.level, p.st.kills, p.st.deaths, p.st.shoots, p.st.hits,
 		p.st.headshots, p.st.assists, p.st.roundWin, p.st.roundLose,
-		(long long)totalPlaytime, (long long)now,
+		(long long)totalPlaytime, p.coins,
+		(long long)now,
 		disconnect ? 0 : g_Cfg.serverId, (long long)p.resetCooldownUntil);
 
 	DB_Query(q);
@@ -391,9 +501,8 @@ void SavePlayer(int iSlot, bool disconnect)
 	}
 	else
 	{
-		// keep in-memory playtime baseline in sync with what we just wrote
 		p.dbPlaytime = totalPlaytime;
-		p.sessionStart = now;
+		p.sessionActiveSec = 0;
 		RefreshTopPositions(iSlot);
 	}
 }
@@ -405,22 +514,25 @@ void ResetPlayerStats(int iSlot)
 		return;
 
 	time_t cooldown = p.resetCooldownUntil;
+	int oldLevel = p.level;
 	p.st = PlayerStats{};
-	p.st.exp = g_Cfg.typeStatistics ? 1000 : g_Cfg.startPoints;
+	p.level = 1;
 	p.sess = PlayerStats{};
 	p.dbPlaytime = 0;
-	p.sessionStart = time(nullptr);
-	p.connectTime = p.sessionStart; // stats wiped -> the session starts over too
+	p.sessionActiveSec = 0;
+	p.connectTime = time(nullptr);
+	p.activeSecSinceCoin = 0;
 	p.killStreak = 0;
 	p.roundExp = 0;
 	p.resetCooldownUntil = cooldown;
 
-	CheckRank(iSlot, false);
 	SavePlayer(iSlot);
+	if (oldLevel != p.level)
+		ApiFireLevelChanged(iSlot, p.level, oldLevel);
 }
 
 // ---------------------------------------------------------------------------
-// Bootstrap: schema creation + legacy migration (the `online` bug fix)
+// Bootstrap
 // ---------------------------------------------------------------------------
 
 static void MigrateColumn(const char* column, const char* alterDef)
@@ -438,11 +550,89 @@ static void MigrateColumn(const char* column, const char* alterDef)
 	});
 }
 
+static void FinishBootstrap()
+{
+	char q[512];
+	V_snprintf(q, sizeof(q), "UPDATE `%s` SET `online` = 0 WHERE `online` = %i;", g_Cfg.tableName, g_Cfg.serverId);
+	DB_Query(q);
+
+	if (g_Cfg.cleanDbDays > 0)
+	{
+		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `lastconnect` = 0 WHERE `lastconnect` AND `lastconnect` < %lld;",
+			g_Cfg.tableName, (long long)(time(nullptr) - (int64_t)g_Cfg.cleanDbDays * 86400));
+		DB_Query(q);
+	}
+
+	V_snprintf(q, sizeof(q), "SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`;", g_Cfg.tableName);
+	DB_Query(q, [](const DBResult& r) {
+		if (r.ok && r.RowCount())
+			g_iDBCountPlayers = r.GetInt(0, 0);
+
+		g_bCoreReady = true;
+		LR_Log("core is ready (players in db: %i)", g_iDBCountPlayers);
+		ApiFireCoreReady();
+
+		for (int i = 0; i < LR_MAXPLAYERS; i++)
+		{
+			if (g_Players[i].steam64 && !g_Players[i].loaded)
+				LoadPlayer(i, g_Players[i].steam64);
+		}
+	});
+}
+
+static void MarkXpAsCumulative()
+{
+	std::string q = "UPDATE `" + std::string(g_Cfg.tableName)
+		+ "` SET `xp_cumulative` = 1 WHERE `xp_cumulative` = 0;";
+
+	DB_Query(q, [](const DBResult& r) {
+		if (!r.ok)
+		{
+			Warning("[LR] Failed to mark XP as cumulative: %s\n", r.error.c_str());
+			return;
+		}
+		LR_Log("cumulative XP marker updated (%llu row(s))", (unsigned long long)r.affected);
+		FinishBootstrap();
+	});
+}
+
+static void EnsureCumulativeXpColumn()
+{
+	char q[512];
+	V_snprintf(q, sizeof(q),
+		"SELECT COUNT(*) FROM information_schema.COLUMNS "
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'xp_cumulative';",
+		g_Cfg.tableName);
+
+	DB_Query(q, [](const DBResult& r) {
+		if (!r.ok || !r.RowCount())
+		{
+			Warning("[LR] Failed to inspect cumulative XP schema: %s\n", r.error.c_str());
+			return;
+		}
+		if (r.GetInt(0, 0) != 0)
+		{
+			MarkXpAsCumulative();
+			return;
+		}
+
+		char alter[256];
+		V_snprintf(alter, sizeof(alter),
+			"ALTER TABLE `%s` ADD COLUMN `xp_cumulative` tinyint unsigned NOT NULL DEFAULT 0;",
+			g_Cfg.tableName);
+		DB_Query(alter, [](const DBResult& altered) {
+			if (!altered.ok)
+			{
+				Warning("[LR] Failed to add cumulative XP marker: %s\n", altered.error.c_str());
+				return;
+			}
+			MarkXpAsCumulative();
+		});
+	});
+}
+
 void DB_Bootstrap()
 {
-	// Full schema in a single CREATE — never a blind ALTER afterwards.
-	// (Pisex crashed on restart: CREATE already had `online`, then
-	//  an unconditional ALTER ADD COLUMN `online` returned error 1060.)
 	char q[2048];
 	V_snprintf(q, sizeof(q),
 		"CREATE TABLE IF NOT EXISTS `%s` ("
@@ -460,9 +650,11 @@ void DB_Bootstrap()
 		"`round_win` int NOT NULL DEFAULT 0, "
 		"`round_lose` int NOT NULL DEFAULT 0, "
 		"`playtime` bigint NOT NULL DEFAULT 0, "
+		"`coins` int NOT NULL DEFAULT 0, "
 		"`lastconnect` bigint NOT NULL DEFAULT 0, "
 		"`online` int NOT NULL DEFAULT 0, "
 		"`reset_cooldown` bigint NOT NULL DEFAULT 0, "
+		"`xp_cumulative` tinyint unsigned NOT NULL DEFAULT 0, "
 		"PRIMARY KEY (`steam`), "
 		"KEY `idx_steamid64` (`steamid64`), "
 		"KEY `idx_value` (`value`)"
@@ -476,7 +668,6 @@ void DB_Bootstrap()
 			return;
 		}
 
-		// Legacy Pisex/SourcePawn tables may miss these columns.
 		char alter[256];
 		V_snprintf(alter, sizeof(alter), "ALTER TABLE `%s` ADD COLUMN `steamid64` bigint unsigned NOT NULL DEFAULT 0, ADD KEY `idx_steamid64` (`steamid64`);", g_Cfg.tableName);
 		MigrateColumn("steamid64", alter);
@@ -484,33 +675,9 @@ void DB_Bootstrap()
 		MigrateColumn("online", alter);
 		V_snprintf(alter, sizeof(alter), "ALTER TABLE `%s` ADD COLUMN `reset_cooldown` bigint NOT NULL DEFAULT 0;", g_Cfg.tableName);
 		MigrateColumn("reset_cooldown", alter);
+		V_snprintf(alter, sizeof(alter), "ALTER TABLE `%s` ADD COLUMN `coins` int NOT NULL DEFAULT 0;", g_Cfg.tableName);
+		MigrateColumn("coins", alter);
 
-		char q2[512];
-		V_snprintf(q2, sizeof(q2), "UPDATE `%s` SET `online` = 0 WHERE `online` = %i;", g_Cfg.tableName, g_Cfg.serverId);
-		DB_Query(q2);
-
-		if (g_Cfg.cleanDbDays > 0)
-		{
-			V_snprintf(q2, sizeof(q2), "UPDATE `%s` SET `lastconnect` = 0 WHERE `lastconnect` AND `lastconnect` < %lld;",
-				g_Cfg.tableName, (long long)(time(nullptr) - (int64_t)g_Cfg.cleanDbDays * 86400));
-			DB_Query(q2);
-		}
-
-		V_snprintf(q2, sizeof(q2), "SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`;", g_Cfg.tableName);
-		DB_Query(q2, [](const DBResult& r2) {
-			if (r2.ok && r2.RowCount())
-				g_iDBCountPlayers = r2.GetInt(0, 0);
-
-			g_bCoreReady = true;
-			LR_Log("core is ready (players in db: %i)", g_iDBCountPlayers);
-			ApiFireCoreReady();
-
-			// plugin loaded mid-map: pick up players who are already here
-			for (int i = 0; i < LR_MAXPLAYERS; i++)
-			{
-				if (g_Players[i].steam64 && !g_Players[i].loaded)
-					LoadPlayer(i, g_Players[i].steam64);
-			}
-		});
+		EnsureCumulativeXpColumn();
 	});
 }

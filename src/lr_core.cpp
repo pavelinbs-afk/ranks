@@ -1,4 +1,4 @@
-#include "lr_core.h"
+﻿#include "lr_core.h"
 
 #include <map>
 #include <vector>
@@ -14,6 +14,7 @@
 #include "events.h"
 #include "imultiaddonmanager.h"
 #include "players.h"
+#include "menu.h"
 #include "tab.h"
 #include "vtable_finder.h"
 
@@ -424,7 +425,10 @@ void LRCorePlugin::Hook_GameFrame(bool simulating, bool bFirstTick, bool bLastTi
 		return;
 
 	Events_TryRegister();
-	Commands_ProcessQueue(); // chat commands deferred by the say hook
+	Commands_ProcessQueue();
+	Menu_OnGameFrame();
+	Center_OnGameFrame();
+	TickActivePlaytime();
 	GiveTimeExp();
 	Tab_OnGameFrame();
 }
@@ -455,6 +459,7 @@ void LRCorePlugin::Hook_ClientDisconnect(CPlayerSlot slot, ENetworkDisconnection
 		return;
 
 	SavePlayer(iSlot, true);
+	Menu_OnDisconnect(iSlot);
 }
 
 void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandContext& ctx, const CCommand& args)
@@ -466,7 +471,7 @@ void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandCont
 		if (!V_stricmp(name, "say") || !V_stricmp(name, "say_team"))
 		{
 			const char* text = args[1];
-			if (Commands_IsChatCommand(text))
+			if (Commands_IsChatCommand(iSlot, text))
 			{
 				// Run it next frame: this hook fires before the engine echoes
 				// the player's own line, so printing here would put the answer

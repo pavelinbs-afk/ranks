@@ -3,6 +3,8 @@
 #include "chat.h"
 #include "config.h"
 #include "db.h"
+#include "events.h"
+#include "menu.h"
 #include "players.h"
 
 #include <convar.h>
@@ -13,121 +15,36 @@
 // chat commands
 // ---------------------------------------------------------------------------
 
+static bool ParseMenuKey(const char* text, int* outKey)
+{
+	if (!text || (text[0] != '!' && text[0] != '/'))
+		return false;
+	if (text[1] < '1' || text[1] > '9')
+		return false;
+	if (text[2] != '\0' && text[2] != ' ')
+		return false;
+	*outKey = text[1] - '0';
+	return true;
+}
+
 static void CmdRank(int iSlot)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRPrintPhrase(iSlot, "NotLoaded");
-		return;
-	}
-
-	uint64_t steam64 = p.steam64;
-	char q[512];
-	V_snprintf(q, sizeof(q),
-		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE `value` >= %i AND `lastconnect`);",
-		g_Cfg.tableName, p.st.exp);
-
-	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
-		PlayerInfo& p = g_Players[iSlot];
-		if (p.steam64 != steam64 || !p.loaded || PlayerGeneration(iSlot) != gen)
-			return;
-		if (r.ok && r.RowCount())
-			p.posTop = r.GetInt(0, 0);
-
-		float kd = p.st.kills / (p.st.deaths ? float(p.st.deaths) : 1.0f);
-
-		if (g_Cfg.showRankMessage)
-		{
-			for (int i = 0; i < LR_MAXPLAYERS; i++)
-			{
-				if (g_Players[i].loaded)
-					LRPrintPhrase(i, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-						p.st.exp, p.st.kills, p.st.deaths, kd);
-			}
-		}
-		else
-		{
-			LRPrintPhrase(iSlot, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-				p.st.exp, p.st.kills, p.st.deaths, kd);
-		}
-	});
+	Menu_OpenRank(iSlot);
 }
 
 static void CmdLevel(int iSlot)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRPrintPhrase(iSlot, "NotLoaded");
-		return;
-	}
-
-	// p.level is only recomputed when exp changes, so an lr_reload that shortens
-	// the Ranks list can leave it pointing past the end of ranksKey.
-	int rankCount = (int)g_Cfg.ranksExp.size();
-	if (p.level > rankCount)
-		p.level = LevelFromExp(p.st.exp);
-
-	const char* rankName = p.level >= 1 ? Phrase(g_Cfg.ranksKey[p.level - 1].c_str()) : "-";
-	char expStr[64];
-	if (p.level < rankCount)
-		V_snprintf(expStr, sizeof(expStr), "%i / %i", p.st.exp, g_Cfg.ranksExp[p.level]);
-	else
-		V_snprintf(expStr, sizeof(expStr), "%i", p.st.exp);
-
-	LRPrintPhrase(iSlot, "MyLevel", rankName, p.level, rankCount, expStr);
+	Menu_OpenLvl(iSlot);
 }
 
 static void CmdSession(int iSlot)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRPrintPhrase(iSlot, "NotLoaded");
-		return;
-	}
-
-	char expStr[16], posStr[16], timeStr[32];
-	V_snprintf(expStr, sizeof(expStr), "%s%i", p.sess.exp > 0 ? "+" : "", p.sess.exp);
-	V_snprintf(posStr, sizeof(posStr), "%s%i", p.sessPosTop > 0 ? "+" : "", p.sessPosTop);
-	FormatDuration(SessionTime(iSlot), timeStr, sizeof(timeStr));
-
-	LRPrintPhrase(iSlot, "SessionStats", timeStr, expStr, p.sess.kills, p.sess.deaths,
-		p.sess.headshots, StatKD(p.sess.kills, p.sess.deaths), posStr);
+	Menu_OpenSession(iSlot);
 }
 
 static void CmdTop(int iSlot, bool byTime)
 {
-	char q[512];
-	if (byTime)
-		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `playtime` / 3600.0 FROM `%s` WHERE `lastconnect` ORDER BY `playtime` DESC LIMIT %i;",
-			g_Cfg.tableName, g_Cfg.topCount);
-	else
-		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `value` FROM `%s` WHERE `lastconnect` ORDER BY `value` DESC LIMIT %i;",
-			g_Cfg.tableName, g_Cfg.topCount);
-
-	uint64_t steam64 = g_Players[iSlot].steam64;
-	DB_Query(q, [iSlot, steam64, byTime, gen = PlayerGeneration(iSlot)](const DBResult& r) {
-		if (g_Players[iSlot].steam64 != steam64 || PlayerGeneration(iSlot) != gen)
-			return;
-		if (!r.ok || !r.RowCount())
-		{
-			LRPrintPhrase(iSlot, "NoData");
-			return;
-		}
-
-		LRPrintPhrase(iSlot, byTime ? "TopTimeTitle" : "TopTitle");
-		for (int i = 0; i < r.RowCount(); i++)
-		{
-			if (byTime)
-				LRPrintPhrase(iSlot, "TopTimeLine", i + 1, r.Get(i, 0), (float)r.GetFloat(i, 1));
-			else
-				LRPrintPhrase(iSlot, "TopLine", i + 1, r.Get(i, 0), r.GetInt(i, 1));
-		}
-	});
+	Menu_OpenTop(iSlot, byTime);
 }
 
 static void CmdResetStats(int iSlot)
@@ -135,7 +52,7 @@ static void CmdResetStats(int iSlot)
 	PlayerInfo& p = g_Players[iSlot];
 	if (!p.loaded)
 	{
-		LRPrintPhrase(iSlot, "NotLoaded");
+		LRCenterPhrase(iSlot, "NotLoaded");
 		return;
 	}
 	if (!g_Cfg.showResetStats)
@@ -145,13 +62,13 @@ static void CmdResetStats(int iSlot)
 	if (p.resetCooldownUntil > now)
 	{
 		int left = (int)(p.resetCooldownUntil - now);
-		LRPrintPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
+		LRCenterPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
 		return;
 	}
 
 	p.resetCooldownUntil = now + g_Cfg.resetCooldown;
 	ResetPlayerStats(iSlot);
-	LRPrintPhrase(iSlot, "ResetStatsDone");
+	LRCenterPhrase(iSlot, "ResetStatsDone");
 }
 
 // Copies the bare command word ("!session extra" -> "session").
@@ -175,6 +92,13 @@ static bool RunChatCommand(int iSlot, const char* text)
 	if (text[0] != '!' && text[0] != '/')
 		return false;
 
+	int menuKey = 0;
+	if (ParseMenuKey(text, &menuKey) && Menu_IsActive(iSlot))
+	{
+		Menu_TryHandleKey(iSlot, menuKey);
+		return true;
+	}
+
 	char cmd[32];
 	ParseCmdWord(text, cmd, sizeof(cmd));
 
@@ -188,7 +112,7 @@ static bool RunChatCommand(int iSlot, const char* text)
 		CmdTop(iSlot, true);
 	else if (!V_stricmp(cmd, "session"))
 		CmdSession(iSlot);
-	else if (!V_stricmp(cmd, "resetstats"))
+	else if (!V_stricmp(cmd, "resetstats") || !V_stricmp(cmd, "rs"))
 		CmdResetStats(iSlot);
 	else
 		return false;
@@ -196,17 +120,21 @@ static bool RunChatCommand(int iSlot, const char* text)
 	return true;
 }
 
-bool Commands_IsChatCommand(const char* text)
+bool Commands_IsChatCommand(int iSlot, const char* text)
 {
 	if (!text || (text[0] != '!' && text[0] != '/'))
 		return false;
+
+	int menuKey = 0;
+	if (ParseMenuKey(text, &menuKey) && iSlot >= 0 && Menu_IsActive(iSlot))
+		return true;
 
 	char cmd[32];
 	ParseCmdWord(text, cmd, sizeof(cmd));
 
 	static const char* known[] = {
 		"rank", "ранг", "lvl", "level", "лвл",
-		"top", "toptime", "session", "resetstats",
+		"top", "toptime", "session", "resetstats", "rs",
 	};
 	for (const char* k : known)
 	{
@@ -314,29 +242,52 @@ CON_COMMAND_F(lr_exp, "lr_exp <steamid64> <give|take|set> <amount>", FCVAR_GAMED
 		return;
 	}
 
-	char q[384];
-	if (!V_stricmp(mode, "give"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = `value` + %i WHERE `steamid64` = %llu;",
-			g_Cfg.tableName, amount, (unsigned long long)steam64);
-	else if (!V_stricmp(mode, "take"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = GREATEST(0, `value` - %i) WHERE `steamid64` = %llu;",
-			g_Cfg.tableName, amount, (unsigned long long)steam64);
-	else if (!V_stricmp(mode, "set"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = %i WHERE `steamid64` = %llu;",
-			g_Cfg.tableName, amount, (unsigned long long)steam64);
-	else
+	int expMode = !V_stricmp(mode, "give") ? 1 : (!V_stricmp(mode, "take") ? -1 : 0);
+	if (V_stricmp(mode, "give") && V_stricmp(mode, "take") && V_stricmp(mode, "set"))
 	{
 		Msg("[LR] unknown mode: %s\n", mode);
 		return;
 	}
 
-	DB_Query(q, [steam64](const DBResult& r) {
+	char q[256];
+	V_snprintf(q, sizeof(q), "SELECT `rank`, `value` FROM `%s` WHERE `steamid64` = %llu LIMIT 1;",
+		g_Cfg.tableName, (unsigned long long)steam64);
+	DB_Query(q, [steam64, amount, expMode](const DBResult& r) {
 		if (!r.ok)
+		{
 			Msg("[LR] lr_exp db error: %s\n", r.error.c_str());
-		else if (!r.affected)
+			return;
+		}
+		if (!r.RowCount())
+		{
 			Msg("[LR] lr_exp: steamid64 %llu not found in db\n", (unsigned long long)steam64);
+			return;
+		}
+
+		int rankCount = (int)g_Cfg.ranksExp.size();
+		int level = r.GetInt(0, 0);
+		int exp = r.GetInt(0, 1);
+		if (level < 1) level = 1;
+		if (level > rankCount) level = rankCount;
+
+		if (expMode > 0)
+			exp += amount;
+		else if (expMode < 0)
+			exp -= amount;
 		else
-			Msg("[LR] lr_exp: updated offline player %llu\n", (unsigned long long)steam64);
+			exp = amount;
+		NormalizeRankState(level, exp);
+
+		char q2[384];
+		V_snprintf(q2, sizeof(q2),
+			"UPDATE `%s` SET `rank` = %i, `value` = %i WHERE `steamid64` = %llu;",
+			g_Cfg.tableName, level, exp, (unsigned long long)steam64);
+		DB_Query(q2, [steam64](const DBResult& r2) {
+			if (!r2.ok)
+				Msg("[LR] lr_exp db error: %s\n", r2.error.c_str());
+			else
+				Msg("[LR] lr_exp: updated offline player %llu\n", (unsigned long long)steam64);
+		});
 	});
 }
 
@@ -395,8 +346,8 @@ CON_COMMAND_F(lr_reset, "lr_reset <all|exp|stats> — wipe database statistics",
 	if (!V_stricmp(mode, "all"))
 		V_snprintf(q, sizeof(q), "TRUNCATE TABLE `%s`;", g_Cfg.tableName);
 	else if (!V_stricmp(mode, "exp"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = %i, `rank` = 0;",
-			g_Cfg.tableName, g_Cfg.typeStatistics ? 1000 : g_Cfg.startPoints);
+		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = 0, `rank` = 1;",
+			g_Cfg.tableName);
 	else if (!V_stricmp(mode, "stats"))
 		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `kills` = 0, `deaths` = 0, `shoots` = 0, `hits` = 0, "
 			"`headshots` = 0, `assists` = 0, `round_win` = 0, `round_lose` = 0;", g_Cfg.tableName);
@@ -460,8 +411,22 @@ CON_COMMAND_F(lr_status, "lr_core status", FCVAR_GAMEDLL)
 		if (g_Players[i].loaded)
 			loaded++;
 	}
-	Msg("[LR] ready=%d db_connected=%d players_online=%d players_loaded=%d db_players=%d allow_stats=%d\n",
-		g_bCoreReady, DB_IsConnected(), online, loaded, g_iDBCountPlayers, g_bAllowStatistic);
+	Msg("[LR] ready=%d db_connected=%d players_online=%d players_loaded=%d db_players=%d allow_stats=%d custom_round=%d\n",
+		g_bCoreReady, DB_IsConnected(), online, loaded, g_iDBCountPlayers, g_bAllowStatistic, g_bCustomRoundActive);
+}
+
+CON_COMMAND_F(lr_customround, "lr_customround <0|1> — VIP custom round state (blocks XP when lr_block_customround=1)", FCVAR_GAMEDLL)
+{
+	if (args.ArgC() < 2)
+	{
+		Msg("Usage: lr_customround <0|1>\n");
+		return;
+	}
+
+	int value = atoi(args[1]);
+	g_bCustomRoundActive = value != 0;
+	CheckAllowStatistic(false);
+	Msg("[LR] custom_round=%d allow_stats=%d\n", g_bCustomRoundActive ? 1 : 0, g_bAllowStatistic);
 }
 
 // ---------------------------------------------------------------------------
@@ -490,14 +455,14 @@ static std::string JsonEscape(const char* in)
 	return out;
 }
 
-static void PrintStatsJson(uint64_t steam64, const char* name, int level, int exp,
+static void PrintStatsJson(uint64_t steam64, const char* name, int level, int exp, int coins,
 	int posTop, int total, int kills, int deaths, int headshots, int assists,
 	int64_t playtime, int64_t sessionTime, bool online)
 {
-	Msg("[LR_STATS] {\"steamid64\":\"%llu\",\"name\":\"%s\",\"level\":%i,\"exp\":%i,"
+	Msg("[LR_STATS] {\"steamid64\":\"%llu\",\"name\":\"%s\",\"level\":%i,\"exp\":%i,\"coins\":%i,"
 		"\"pos_top\":%i,\"total_players\":%i,\"kills\":%i,\"deaths\":%i,\"headshots\":%i,"
 		"\"assists\":%i,\"kd\":%.2f,\"playtime\":%lld,\"session_time\":%lld,\"online\":%s}\n",
-		(unsigned long long)steam64, JsonEscape(name).c_str(), level, exp,
+		(unsigned long long)steam64, JsonEscape(name).c_str(), level, exp, coins,
 		posTop, total, kills, deaths, headshots, assists, StatKD(kills, deaths),
 		(long long)playtime, (long long)sessionTime, online ? "true" : "false");
 }
@@ -530,9 +495,10 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 	{
 		char q[512];
 		V_snprintf(q, sizeof(q),
-			"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE `value` >= %i AND `lastconnect`), "
+			"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`), "
 			"(SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`);",
-			g_Cfg.tableName, g_Players[iSlot].st.exp, g_Cfg.tableName);
+			g_Cfg.tableName, g_Players[iSlot].level, g_Players[iSlot].level,
+			g_Players[iSlot].st.exp, g_Cfg.tableName);
 
 		DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
 			PlayerInfo& p = g_Players[iSlot];
@@ -543,7 +509,7 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 			int total = (r.ok && r.RowCount()) ? r.GetInt(0, 1) : g_iDBCountPlayers;
 			p.posTop = posTop;
 
-			PrintStatsJson(p.steam64, p.name, p.level, p.st.exp, posTop, total,
+			PrintStatsJson(p.steam64, p.name, p.level, p.st.exp, p.coins, posTop, total,
 				p.st.kills, p.st.deaths, p.st.headshots, p.st.assists,
 				TotalPlaytime(iSlot), SessionTime(iSlot), true);
 		});
@@ -553,8 +519,8 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 	// Offline: everything from the DB.
 	char q[1024];
 	V_snprintf(q, sizeof(q),
-		"SELECT `name`, `rank`, `value`, `kills`, `deaths`, `headshots`, `assists`, `playtime`, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `value` >= `p`.`value` AND `lastconnect`), "
+		"SELECT `name`, `rank`, `value`, `coins`, `kills`, `deaths`, `headshots`, `assists`, `playtime`, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND `lastconnect`), "
 		"(SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`) "
 		"FROM `%s` `p` WHERE `steamid64` = %llu LIMIT 1;",
 		g_Cfg.tableName, g_Cfg.tableName, g_Cfg.tableName, (unsigned long long)steam64);
@@ -571,9 +537,9 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 			return;
 		}
 
-		PrintStatsJson(steam64, r.Get(0, 0), r.GetInt(0, 1), r.GetInt(0, 2),
-			r.GetInt(0, 8), r.GetInt(0, 9),
-			r.GetInt(0, 3), r.GetInt(0, 4), r.GetInt(0, 5), r.GetInt(0, 6),
-			r.GetInt64(0, 7), 0, false);
+		PrintStatsJson(steam64, r.Get(0, 0), r.GetInt(0, 1), r.GetInt(0, 2), r.GetInt(0, 3),
+			r.GetInt(0, 9), r.GetInt(0, 10),
+			r.GetInt(0, 4), r.GetInt(0, 5), r.GetInt(0, 6), r.GetInt(0, 7),
+			r.GetInt64(0, 8), 0, false);
 	});
 }

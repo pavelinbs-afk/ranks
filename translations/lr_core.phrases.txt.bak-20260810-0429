@@ -1,0 +1,290 @@
+"Phrases"
+{
+	"Prefix"
+	{
+		"ru"	"{GOLD}[Опыт]{DEFAULT}"
+		"en"	"{GOLD}[Exp]{DEFAULT}"
+	}
+	"Kill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за убийство]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for a kill]"
+	}
+	"MyDeath"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за смерть]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for dying]"
+	}
+	"Suicide"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за суицид]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for suicide]"
+	}
+	"TeamKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за убийство союзника]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for a teamkill]"
+	}
+	"AssisterKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за помощь в убийстве]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for an assist]"
+	}
+	"HeadShotKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за убийство в голову]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for a headshot]"
+	}
+	"RoundWin"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за победу в раунде]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for winning the round]"
+	}
+	"RoundLose"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за проигрыш раунда]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for losing the round]"
+	}
+	"RoundMVP"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за MVP раунда]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for round MVP]"
+	}
+	"BombPlanted"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за установку бомбы]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for planting the bomb]"
+	}
+	"BombDefused"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за разминирование]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for defusing the bomb]"
+	}
+	"BombDropped"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за потерю бомбы]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for dropping the bomb]"
+	}
+	"BombPickup"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за поднятие бомбы]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for picking up the bomb]"
+	}
+	"HostageKilled"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} за убийство заложника]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} for killing a hostage]"
+	}
+	"HostageRescued"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за спасение заложника]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for rescuing a hostage]"
+	}
+	"TimeExp"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} за время в игре]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} for time played]"
+	}
+	"AdminGive"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} выдал администратор]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GREEN}%s{DEFAULT} given by admin]"
+	}
+	"AdminTake"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} забрал администратор]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{RED}%s{DEFAULT} taken by admin]"
+	}
+	"DoubleKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Double Kill]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for a Double Kill]"
+	}
+	"TripleKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Triple Kill]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for a Triple Kill]"
+	}
+	"Domination"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Domination]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for Domination]"
+	}
+	"Rampage"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Rampage]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for Rampage]"
+	}
+	"MegaKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Mega Kill]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for a Mega Kill]"
+	}
+	"Ownage"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Ownage]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for Ownage]"
+	}
+	"UltraKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Ultra Kill]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for an Ultra Kill]"
+	}
+	"KillingSpree"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Killing Spree]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for a Killing Spree]"
+	}
+	"MonsterKill"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Monster Kill]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for a Monster Kill]"
+	}
+	"Unstoppable"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за Unstoppable]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for Unstoppable]"
+	}
+	"GodLike"
+	{
+		"ru"	"Опыт: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} за God Like]"
+		"en"	"Exp: {LIME}%i{DEFAULT} [{GOLD}%s{DEFAULT} for God Like]"
+	}
+	"LevelUp"
+	{
+		"ru"	"Поздравляем! Вы получили звание {GOLD}%s{DEFAULT}"
+		"en"	"Congratulations! You are now {GOLD}%s{DEFAULT}"
+	}
+	"LevelDown"
+	{
+		"ru"	"Вы понижены до звания {RED}%s{DEFAULT}"
+		"en"	"You have been demoted to {RED}%s{DEFAULT}"
+	}
+	"LevelUpAll"
+	{
+		"ru"	"Игрок {GREEN}%s{DEFAULT} поднял {GOLD}%i{DEFAULT} уровень"
+		"en"	"Player {GREEN}%s{DEFAULT} reached level {GOLD}%i{DEFAULT}"
+	}
+	"LevelDownAll"
+	{
+		"ru"	"Игрок {GREEN}%s{DEFAULT} понижен до звания {RED}%s{DEFAULT}"
+		"en"	"Player {GREEN}%s{DEFAULT} demoted to {RED}%s{DEFAULT}"
+	}
+	"RankPlayer"
+	{
+		"ru"	"Игрок {GREEN}%s{DEFAULT} | Место: {GOLD}%i{DEFAULT}/%i | Опыт: {LIME}%i{DEFAULT} | Убийств: %i | Смертей: %i | K/D: %.2f"
+		"en"	"Player {GREEN}%s{DEFAULT} | Rank: {GOLD}%i{DEFAULT}/%i | Exp: {LIME}%i{DEFAULT} | Kills: %i | Deaths: %i | K/D: %.2f"
+	}
+	"MyLevel"
+	{
+		"ru"	"Звание: {GOLD}%s{DEFAULT} [%i/%i] | Опыт: {LIME}%s{DEFAULT}"
+		"en"	"Level: {GOLD}%s{DEFAULT} [%i/%i] | Exp: {LIME}%s{DEFAULT}"
+	}
+	"SessionStats"
+	{
+		"ru"	"За сессию ({GOLD}%s{DEFAULT}): опыт {LIME}%s{DEFAULT} | убийств: %i | смертей: %i | хедшотов: %i | K/D: %.2f | место: %s"
+		"en"	"This session ({GOLD}%s{DEFAULT}): exp {LIME}%s{DEFAULT} | kills: %i | deaths: %i | headshots: %i | K/D: %.2f | rank: %s"
+	}
+	"TopTitle"
+	{
+		"ru"	"Топ игроков по опыту:"
+		"en"	"Top players by exp:"
+	}
+	"TopTimeTitle"
+	{
+		"ru"	"Топ игроков по времени игры:"
+		"en"	"Top players by playtime:"
+	}
+	"TopLine"
+	{
+		"ru"	"{GOLD}%i.{DEFAULT} %s — уровень {GREEN}%i{DEFAULT}, опыт {LIME}%i{DEFAULT}"
+		"en"	"{GOLD}%i.{DEFAULT} %s — level {GREEN}%i{DEFAULT}, exp {LIME}%i{DEFAULT}"
+	}
+	"TopTimeLine"
+	{
+		"ru"	"{GOLD}%i.{DEFAULT} %s — {LIME}%.1f{DEFAULT} ч."
+		"en"	"{GOLD}%i.{DEFAULT} %s — {LIME}%.1f{DEFAULT} h"
+	}
+	"NoData"
+	{
+		"ru"	"Нет данных."
+		"en"	"No data."
+	}
+	"RoundStartMessageRanks"
+	{
+		"ru"	"Команды: {GREEN}!rank !top !toptime !session !resetstats{DEFAULT}"
+		"en"	"Commands: {GREEN}!rank !top !toptime !session !resetstats{DEFAULT}"
+	}
+	"RoundStartCheckCount"
+	{
+		"ru"	"Недостаточно игроков для начисления опыта: {RED}%i{DEFAULT} из {GREEN}%i{DEFAULT}"
+		"en"	"Not enough players for exp: {RED}%i{DEFAULT} of {GREEN}%i{DEFAULT}"
+	}
+	"RoundExpResultGive"
+	{
+		"ru"	"За раунд вы получили {GREEN}+%i{DEFAULT} опыта"
+		"en"	"You earned {GREEN}+%i{DEFAULT} exp this round"
+	}
+	"RoundExpResultTake"
+	{
+		"ru"	"За раунд вы потеряли {RED}%i{DEFAULT} опыта"
+		"en"	"You lost {RED}%i{DEFAULT} exp this round"
+	}
+	"RoundExpResultNothing"
+	{
+		"ru"	"За раунд ваш опыт не изменился"
+		"en"	"Your exp did not change this round"
+	}
+	"RoundExpResultAll"
+	{
+		"ru"	"Всего опыта: {LIME}%i{DEFAULT}"
+		"en"	"Total exp: {LIME}%i{DEFAULT}"
+	}
+	"ResetStatsDone"
+	{
+		"ru"	"Ваша статистика сброшена."
+		"en"	"Your stats have been reset."
+	}
+	"ResetStatsCooldown"
+	{
+		"ru"	"Сброс будет доступен через {RED}%i ч. %i мин.{DEFAULT}"
+		"en"	"Reset available in {RED}%ih %im{DEFAULT}"
+	}
+	"NotLoaded"
+	{
+		"ru"	"Ваша статистика ещё загружается, попробуйте позже."
+		"en"	"Your stats are still loading, try again later."
+	}
+	"You"
+	{
+		"ru"	"(вы)"
+		"en"	"(you)"
+	}
+
+	// ===== Названия званий (столько же, сколько в settings.ini Ranks) =====
+	"rank_1"  { "ru" "Новичок"            "en" "Rookie" }
+	"rank_2"  { "ru" "Рядовой"            "en" "Private" }
+	"rank_3"  { "ru" "Ефрейтор"           "en" "Lance Corporal" }
+	"rank_4"  { "ru" "Младший сержант"    "en" "Junior Sergeant" }
+	"rank_5"  { "ru" "Сержант"            "en" "Sergeant" }
+	"rank_6"  { "ru" "Старший сержант"    "en" "Senior Sergeant" }
+	"rank_7"  { "ru" "Старшина"           "en" "Master Sergeant" }
+	"rank_8"  { "ru" "Прапорщик"          "en" "Warrant Officer" }
+	"rank_9"  { "ru" "Старший прапорщик"  "en" "Senior Warrant Officer" }
+	"rank_10" { "ru" "Младший лейтенант"  "en" "Junior Lieutenant" }
+	"rank_11" { "ru" "Лейтенант"          "en" "Lieutenant" }
+	"rank_12" { "ru" "Старший лейтенант"  "en" "Senior Lieutenant" }
+	"rank_13" { "ru" "Капитан"            "en" "Captain" }
+	"rank_14" { "ru" "Майор"              "en" "Major" }
+	"rank_15" { "ru" "Подполковник"       "en" "Lieutenant Colonel" }
+	"rank_16" { "ru" "Полковник"          "en" "Colonel" }
+	"rank_17" { "ru" "Генерал-майор"      "en" "Major General" }
+	"rank_18" { "ru" "Генерал-лейтенант"  "en" "Lieutenant General" }
+	"rank_19" { "ru" "Генерал-полковник"  "en" "Colonel General" }
+	"rank_20" { "ru" "Генерал армии"      "en" "General of the Army" }
+	"rank_21" { "ru" "Маршал"             "en" "Marshal" }
+	"rank_22" { "ru" "Легенда"            "en" "Legend" }
+	"rank_23" { "ru" "Элита"              "en" "Elite" }
+	"rank_24" { "ru" "Бессмертный"        "en" "Immortal" }
+	"rank_25" { "ru" "Божество"           "en" "Deity" }
+}

@@ -14,3 +14,5 @@ int FindSlotBySteam64(uint64_t steam64);
 
 // "STEAM_1:X:Y" from a 64-bit account id
 void Steam64ToSteamId(uint64_t steam64, char* out, int outSize);
+
+int GetPlayerTeamNum(int iSlot);

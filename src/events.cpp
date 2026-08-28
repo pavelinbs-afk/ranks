@@ -3,8 +3,6 @@
 #include "chat.h"
 #include "schema.h"
 
-#include <cmath>
-
 bool g_bAllowStatistic = false;
 
 static bool s_bRegistered = false;
@@ -86,7 +84,13 @@ static bool IsPawnAlive(int iSlot)
 	return Schema_Get<int32_t>(pPawn, "CBaseEntity", "m_iHealth") > 0;
 }
 
-void CheckAllowStatistic(bool roundStart)
+void CheckAllowStatistic(bool /*roundStart*/)
+{
+	g_bAllowStatistic = !(g_Cfg.blockWarmup && IsWarmup())
+		&& !(g_Cfg.blockCustomRound && g_bCustomRoundActive);
+}
+
+int CountHumansOnTeams()
 {
 	int humans = 0;
 	for (int i = 0; i < LR_MAXPLAYERS; i++)
@@ -94,48 +98,44 @@ void CheckAllowStatistic(bool roundStart)
 		if (g_Players[i].steam64 && GetControllerBySlot(i) && GetTeam(i) > 1)
 			humans++;
 	}
-
-	bool tooFew = humans < g_Cfg.minPlayers;
-	g_bAllowStatistic = !tooFew && !(g_Cfg.blockWarmup && IsWarmup());
-
-	if (roundStart && g_Cfg.showSpawnMessage)
-	{
-		for (int i = 0; i < LR_MAXPLAYERS; i++)
-		{
-			if (!g_Players[i].loaded)
-				continue;
-			if (tooFew)
-				LRPrintPhrase(i, "RoundStartCheckCount", humans, g_Cfg.minPlayers);
-			LRPrintPhrase(i, "RoundStartMessageRanks");
-		}
-	}
+	return humans;
 }
 
-static int RoundNearest(float v)
+int ScaleExpByPlayerCount(int delta)
 {
-	return (int)std::lround(v);
+	if (delta == 0)
+		return 0;
+
+	int humans = CountHumansOnTeams();
+	if (humans < 3)
+		return 0;
+	if (humans >= g_Cfg.minPlayers)
+		return delta;
+
+	// 3–4 игрока: по 1 опыту за событие (или −1 за штраф).
+	return delta > 0 ? 1 : -1;
 }
 
-static void PayKillStreak(int iSlot)
+static void TryPayKillStreak(int iSlot)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	int streak = p.killStreak;
-	p.killStreak = 0;
+	if (iSlot < 0 || !g_Players[iSlot].loaded)
+		return;
 
-	if (streak > 1 && g_Cfg.typeStatistics != 2)
-	{
-		static const char* phrases[] = {
-			"DoubleKill", "TripleKill", "Domination", "Rampage", "MegaKill",
-			"Ownage", "UltraKill", "KillingSpree", "MonsterKill", "Unstoppable", "GodLike",
-		};
-		int idx = streak - 2;
-		if (idx > 10)
-			idx = 10;
+	int streak = g_Players[iSlot].killStreak;
+	if (streak < 2)
+		return;
+
+	static const char* phrases[] = {
+		"DoubleKill", "TripleKill", "Domination", "Rampage", "MegaKill",
+		"Ownage", "UltraKill", "KillingSpree", "MonsterKill", "Unstoppable", "GodLike",
+	};
+	int idx = streak - 2;
+	if (idx > 10)
+		idx = 10;
+	if (g_Cfg.bonus[idx] != 0)
 		ChangeExp(iSlot, g_Cfg.bonus[idx], phrases[idx]);
-	}
-
-	if (g_Cfg.saveMode)
-		SavePlayer(iSlot);
+	if (g_Cfg.coinsMultikill > 0)
+		GiveCoins(iSlot, g_Cfg.coinsMultikill, "CoinMultiKill");
 }
 
 // ---------------------------------------------------------------------------
@@ -169,38 +169,8 @@ static void OnPlayerDeath(IGameEvent* event)
 		{
 			bool victimFake = !g_Players[victim].loaded;
 			bool attackerFake = !g_Players[attacker].loaded;
-			int expAttacker = 0, expVictim = 0;
-
-			switch (g_Cfg.typeStatistics)
-			{
-				case 0:
-					expAttacker = victimFake ? g_Cfg.expKillBot : g_Cfg.expKill;
-					expVictim = attackerFake ? g_Cfg.expDeathBot : g_Cfg.expDeath;
-					break;
-
-				case 1:
-					if (!victimFake && !attackerFake)
-					{
-						int ea = g_Players[attacker].st.exp;
-						if (ea < 1) ea = 1;
-						expAttacker = RoundNearest(float(g_Players[victim].st.exp) / ea * 5.0f);
-						if (expAttacker < 1)
-							expAttacker = 1;
-						expVictim = RoundNearest(expAttacker * (g_Cfg.killCoeffPct / 100.0f));
-						if (expVictim < 1)
-							expVictim = 1;
-					}
-					break;
-
-				default:
-					if (!victimFake && !attackerFake)
-					{
-						int diff = g_Players[victim].st.exp - g_Players[attacker].st.exp;
-						expAttacker = diff < 3 ? 2 : (diff / 100) + 2;
-						expVictim = expAttacker;
-					}
-					break;
-			}
+			int expAttacker = victimFake ? g_Cfg.expKillBot : g_Cfg.expKill;
+			int expVictim = attackerFake ? g_Cfg.expDeathBot : g_Cfg.expDeath;
 
 			bool changedA = ChangeExp(attacker, expAttacker, "Kill");
 			bool changedV = ChangeExp(victim, -expVictim, "MyDeath");
@@ -217,6 +187,7 @@ static void OnPlayerDeath(IGameEvent* event)
 					g_Players[attacker].st.kills++;
 					g_Players[attacker].sess.kills++;
 					g_Players[attacker].killStreak++;
+					TryPayKillStreak(attacker);
 				}
 				if (!victimFake)
 				{
@@ -228,7 +199,7 @@ static void OnPlayerDeath(IGameEvent* event)
 	}
 
 	if (victim >= 0 && g_Players[victim].loaded)
-		PayKillStreak(victim);
+		g_Players[victim].killStreak = 0;
 }
 
 static void OnRoundEnd(IGameEvent* event)
@@ -257,18 +228,18 @@ static void OnRoundEnd(IGameEvent* event)
 			}
 
 			if (IsPawnAlive(i))
-				PayKillStreak(i);
+				g_Players[i].killStreak = 0;
 
 			if (g_Cfg.showUsualMessage == 2 && g_Players[i].loaded)
 			{
 				int re = g_Players[i].roundExp;
 				if (re > 0)
-					LRPrintPhrase(i, "RoundExpResultGive", re);
+					LRCenterPhrase(i, "RoundExpResultGive", re);
 				else if (re < 0)
-					LRPrintPhrase(i, "RoundExpResultTake", -re);
+					LRCenterPhrase(i, "RoundExpResultTake", -re);
 				else
-					LRPrintPhrase(i, "RoundExpResultNothing");
-				LRPrintPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
+					LRCenterPhrase(i, "RoundExpResultNothing");
+				LRCenterPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
 				g_Players[i].roundExp = 0;
 			}
 		}
@@ -363,14 +334,22 @@ public:
 
 			case 'r':
 				if (!strcmp(name, "round_start"))
+				{
+					for (int i = 0; i < LR_MAXPLAYERS; i++)
+						g_Players[i].killStreak = 0;
 					CheckAllowStatistic(true);
+				}
 				else if (!strcmp(name, "round_end"))
 					OnRoundEnd(event);
 				else if (!strcmp(name, "round_mvp"))
 				{
 					int iSlot = EventSlot(event, "userid");
 					if (iSlot >= 0)
+					{
 						ChangeExp(iSlot, g_Cfg.expMvp, "RoundMVP");
+						if (g_Cfg.coinsMvp > 0)
+							GiveCoins(iSlot, g_Cfg.coinsMvp, "CoinMvp");
+					}
 				}
 				break;
 
@@ -431,9 +410,10 @@ void Events_Unregister()
 void Events_OnStartupServer()
 {
 	s_pGameRules = nullptr;
-	s_bRegistered = false; // listeners survive?, re-add defensively (FindListener guards dupes)
+	s_bRegistered = false;
 	s_iRetryThrottle = 0;
 	g_bAllowStatistic = false;
+	g_bCustomRoundActive = false;
 
 	// Controllers are recreated on a map change, so the scoreboard rank has to
 	// be pushed and revealed again. Without this the TAB icon stays blank until
