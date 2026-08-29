@@ -47,7 +47,6 @@ for sdk_target in MMSPlugin.sdk_targets:
     os.path.join('src', 'tab.cpp'),
     os.path.join('src', 'commands.cpp'),
     os.path.join('src', 'menu.cpp'),
-    os.path.join('src', 'wallet.cpp'),
   ]
 
   nodes = builder.Add(binary)

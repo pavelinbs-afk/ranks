@@ -180,6 +180,8 @@ static const PhraseSpec s_Specs[] = {
 	{"RoundExpResultTake",     "i"},
 	{"RoundExpResultNothing",  ""},
 	{"RoundExpResultAll",      "i"},
+	{"RoundCoinResultGive",    "i"},
+	{"RoundCoinResultAll",     "i"},
 
 	{"ResetStatsDone",     ""},
 	{"ResetStatsCooldown", "ii"},    // hours, minutes

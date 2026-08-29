@@ -230,18 +230,20 @@ static void OnRoundEnd(IGameEvent* event)
 				if (g_Cfg.showUsualMessage)
 				{
 					int re = g_Players[i].roundExp;
+					int rc = g_Players[i].roundCoins;
 					if (re > 0)
-					{
 						LRPrintPhrase(i, "RoundExpResultGive", re);
-						LRPrintPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
-					}
 					else if (re < 0)
-					{
 						LRPrintPhrase(i, "RoundExpResultTake", -re);
+					if (rc > 0)
+						LRPrintPhrase(i, "RoundCoinResultGive", rc);
+					if (re != 0)
 						LRPrintPhrase(i, "RoundExpResultAll", g_Players[i].st.exp);
-					}
+					if (rc > 0)
+						LRPrintPhrase(i, "RoundCoinResultAll", g_Players[i].coins);
 				}
 				g_Players[i].roundExp = 0;
+				g_Players[i].roundCoins = 0;
 			}
 		}
 	}

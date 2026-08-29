@@ -265,6 +265,16 @@
 		"ru"	"Всего опыта: {LIME}%i{DEFAULT}"
 		"en"	"Total exp: {LIME}%i{DEFAULT}"
 	}
+	"RoundCoinResultGive"
+	{
+		"ru"	"За раунд вы получили {GOLD}+%i{DEFAULT} коинов"
+		"en"	"You earned {GOLD}+%i{DEFAULT} coins this round"
+	}
+	"RoundCoinResultAll"
+	{
+		"ru"	"Всего коинов: {GOLD}%i{DEFAULT}"
+		"en"	"Total coins: {GOLD}%i{DEFAULT}"
+	}
 	"ResetStatsDone"
 	{
 		"ru"	"Ваша статистика сброшена."

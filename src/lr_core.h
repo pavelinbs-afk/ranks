@@ -33,7 +33,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.6.1.6"; }
+	const char* GetVersion() override		{ return "2.6.1.7"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
@@ -83,15 +83,11 @@ struct LRSettings
 	int timeExpAmount;     // exp per interval (0 = feature off)
 	int timeExpInterval;   // seconds between grants
 
-	// coins → site_wallets via backend API (not MySQL)
+	// coins → lvl_ranks.coins in MySQL (same balance as the website)
 	int coinsIntervalSec;    // active team seconds between grants (0 = off)
 	int coinsIntervalAmount; // coins per interval (default 10 / 10 min)
 	int coinsMvp;
 	int coinsMultikill;
-
-	bool walletEnabled;
-	char walletApiUrl[256];
-	char walletApiSecret[128];
 
 	// ranks (level thresholds, ascending; level i+1 requires ranksExp[i])
 	std::vector<int> ranksExp;
@@ -149,6 +145,9 @@ struct PlayerInfo
 
 	int killStreak = 0;
 	int roundExp = 0;
+	int coins = 0;             // persistent balance (lvl_ranks.coins)
+	int roundCoins = 0;        // accumulated this round (shown on round_end)
+	int64_t lastCoinIntervalBucket = -1;
 	time_t timeExpAt = 0;      // next periodic time-exp grant (0 = arm on first frame)
 	time_t resetCooldownUntil = 0;
 
@@ -257,8 +256,11 @@ void PulseOnlinePresence();
 // Immediate offline signal on disconnect (before full SavePlayer flush).
 void ClearPlayerOnlinePresence(int iSlot);
 
-// Interval coins only (no exp). Shows center message; credits site_wallets via API.
+// Interval coins only (no exp). Credits lvl_ranks.coins; summary on round_end.
 bool GrantIntervalCoins(int iSlot);
+
+// Atomic MySQL grant: UPDATE coins = coins + amount. Updates memory + roundCoins.
+bool GrantCoins(int iSlot, int amount);
 
 // API hook broadcast (implemented in lr_core.cpp)
 void ApiFireCoreReady();

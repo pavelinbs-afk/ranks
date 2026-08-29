@@ -274,7 +274,6 @@ set(LR_CORE_PLUGIN_SRCS
   src/tab.cpp
   src/commands.cpp
   src/menu.cpp
-  src/wallet.cpp
 )
 
 set(LR_CORE_SDK_SRCS

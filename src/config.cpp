@@ -142,19 +142,7 @@ bool LoadSettings()
 		g_Cfg.coinsMultikill      = 2;
 	}
 
-	KeyValues* wallet = kv->FindKey("Wallet", false);
-	if (wallet)
-	{
-		g_Cfg.walletEnabled = wallet->GetInt("lr_wallet_enabled", 0) != 0;
-		V_strncpy(g_Cfg.walletApiUrl, wallet->GetString("lr_wallet_api_url", ""), sizeof(g_Cfg.walletApiUrl));
-		V_strncpy(g_Cfg.walletApiSecret, wallet->GetString("lr_wallet_api_secret", ""), sizeof(g_Cfg.walletApiSecret));
-	}
-	else
-	{
-		g_Cfg.walletEnabled = false;
-		g_Cfg.walletApiUrl[0] = '\0';
-		g_Cfg.walletApiSecret[0] = '\0';
-	}
+	// Wallet API removed — coins live in lvl_ranks.coins (MySQL).
 
 	return true;
 }

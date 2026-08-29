@@ -679,7 +679,7 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 			int total = (r.ok && r.RowCount()) ? r.GetInt(0, 1) : g_iDBCountPlayers;
 			p.posTop = posTop;
 
-			PrintStatsJson(p.steam64, p.name, p.level, p.st.exp, 0, posTop, total,
+			PrintStatsJson(p.steam64, p.name, p.level, p.st.exp, p.coins, posTop, total,
 				p.st.kills, p.st.deaths, p.st.headshots, p.st.assists,
 				TotalPlaytime(iSlot), SessionTime(iSlot), true);
 		});
