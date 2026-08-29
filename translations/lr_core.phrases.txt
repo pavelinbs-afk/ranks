@@ -2,8 +2,8 @@
 {
 	"Prefix"
 	{
-		"ru"	"{YELLOW}[Статистика]{DEFAULT}"
-		"en"	"{YELLOW}[Stats]{DEFAULT}"
+		"ru"	"{YELLOW}[Статистика] →{DEFAULT}"
+		"en"	"{YELLOW}[Stats] →{DEFAULT}"
 	}
 	"Kill"
 	{

@@ -9,7 +9,7 @@ bool LoadPhrases();
 // Phrase by key; returns the key itself if missing (so problems are visible).
 const char* Phrase(const char* key);
 
-// Chat print with [Статистика] prefix. Slot -1 = server console.
+// Chat print with [Статистика] → prefix. Slot -1 = server console.
 void LRPrint(int iSlot, const char* fmt, ...);
 void LRPrintAll(const char* fmt, ...);
 

@@ -142,22 +142,22 @@ static void PrintRoundSummary(int iSlot, int roundExp, int roundCoins)
 {
 	if (!Events_WasRoundExpAllowed() && roundExp == 0 && roundCoins == 0)
 	{
-		LRCenterPhrase(iSlot, "RoundSummaryNoPlayers", s_iRoundStartHumans, g_Cfg.minPlayers);
+		LRPrintPhrase(iSlot, "RoundSummaryNoPlayers", s_iRoundStartHumans, g_Cfg.minPlayers);
 		return;
 	}
 
 	if (roundExp > 0 && roundCoins > 0)
-		LRCenterPhrase(iSlot, "RoundSummaryEarnedBoth", roundExp, roundCoins);
+		LRPrintPhrase(iSlot, "RoundSummaryEarnedBoth", roundExp, roundCoins);
 	else if (roundExp > 0)
-		LRCenterPhrase(iSlot, "RoundSummaryEarnedExp", roundExp);
+		LRPrintPhrase(iSlot, "RoundSummaryEarnedExp", roundExp);
 	else if (roundCoins > 0 && roundExp < 0)
-		LRCenterPhrase(iSlot, "RoundSummaryMixed", -roundExp, roundCoins);
+		LRPrintPhrase(iSlot, "RoundSummaryMixed", -roundExp, roundCoins);
 	else if (roundCoins > 0)
-		LRCenterPhrase(iSlot, "RoundSummaryEarnedCoins", roundCoins);
+		LRPrintPhrase(iSlot, "RoundSummaryEarnedCoins", roundCoins);
 	else if (roundExp < 0)
-		LRCenterPhrase(iSlot, "RoundSummaryLostExp", -roundExp);
+		LRPrintPhrase(iSlot, "RoundSummaryLostExp", -roundExp);
 	else
-		LRCenterPhrase(iSlot, "RoundSummaryNothing");
+		LRPrintPhrase(iSlot, "RoundSummaryNothing");
 }
 
 void PrintLastRoundBreakdown(int iSlot)
