@@ -2,8 +2,8 @@
 {
 	"Prefix"
 	{
-		"ru"	"{YELLOW}[Статистика] →{DEFAULT}"
-		"en"	"{YELLOW}[Stats] →{DEFAULT}"
+		"ru"	"{YELLOW}[Статистика]{DEFAULT}"
+		"en"	"{YELLOW}[Stats]{DEFAULT}"
 	}
 	"Kill"
 	{
@@ -274,6 +274,61 @@
 	{
 		"ru"	"Всего коинов: {GOLD}%i{DEFAULT}"
 		"en"	"Total coins: {GOLD}%i{DEFAULT}"
+	}
+	"RoundSummaryEarnedBoth"
+	{
+		"ru"	"За раунд заработано {GREEN}%i{DEFAULT} опыта и {GOLD}%i{DEFAULT} коинов!"
+		"en"	"This round: {GREEN}+%i{DEFAULT} exp and {GOLD}+%i{DEFAULT} coins!"
+	}
+	"RoundSummaryEarnedExp"
+	{
+		"ru"	"За раунд заработано {GREEN}%i{DEFAULT} опыта!"
+		"en"	"This round: {GREEN}+%i{DEFAULT} exp!"
+	}
+	"RoundSummaryEarnedCoins"
+	{
+		"ru"	"За раунд заработано {GOLD}%i{DEFAULT} коинов!"
+		"en"	"This round: {GOLD}+%i{DEFAULT} coins!"
+	}
+	"RoundSummaryLostExp"
+	{
+		"ru"	"За раунд потеряно {RED}%i{DEFAULT} опыта"
+		"en"	"This round: {RED}-%i{DEFAULT} exp"
+	}
+	"RoundSummaryNothing"
+	{
+		"ru"	"За раунд ничего не заработано!"
+		"en"	"Nothing earned this round!"
+	}
+	"RoundSummaryNoPlayers"
+	{
+		"ru"	"За раунд заработано 0 — не хватает игроков на сервере ({RED}%i{DEFAULT} из {GREEN}%i{DEFAULT})"
+		"en"	"Nothing earned — not enough players ({RED}%i{DEFAULT} of {GREEN}%i{DEFAULT})"
+	}
+	"RoundSummaryMixed"
+	{
+		"ru"	"За раунд: {RED}-%i{DEFAULT} опыта и {GOLD}+%i{DEFAULT} коинов"
+		"en"	"This round: {RED}-%i{DEFAULT} exp and {GOLD}+%i{DEFAULT} coins"
+	}
+	"RoundBreakdownTitle"
+	{
+		"ru"	"Прошлый раунд: {GREEN}%i{DEFAULT} опыта, {GOLD}%i{DEFAULT} коинов"
+		"en"	"Last round: {GREEN}%i{DEFAULT} exp, {GOLD}%i{DEFAULT} coins"
+	}
+	"RoundBreakdownLine"
+	{
+		"ru"	"  {GREY}%s:{DEFAULT} {GREEN}%i{DEFAULT} опыта"
+		"en"	"  {GREY}%s:{DEFAULT} {GREEN}%i{DEFAULT} exp"
+	}
+	"RoundBreakdownCoinLine"
+	{
+		"ru"	"  {GREY}%s:{DEFAULT} {GOLD}%i{DEFAULT} коинов"
+		"en"	"  {GREY}%s:{DEFAULT} {GOLD}%i{DEFAULT} coins"
+	}
+	"RoundBreakdownEmpty"
+	{
+		"ru"	"Нет данных за прошлый раунд (сыграйте раунд или опыт был отключён)."
+		"en"	"No data for the last round yet."
 	}
 	"ResetStatsDone"
 	{

@@ -14,5 +14,11 @@ void CheckAllowStatistic(bool roundStart = false);
 // Humans on T/CT (not spec).
 int CountHumansOnTeams();
 
-// Scale exp delta by online: under 3 → 0, 3-4 → ±1, at/above threshold → full.
+// Scale exp delta by online: under lr_minplayers_count → 0.
 int ScaleExpByPlayerCount(int delta);
+
+// Round-start snapshot (for player-count messages).
+bool Events_WasRoundExpAllowed();
+int Events_RoundStartHumans();
+
+void PrintLastRoundBreakdown(int iSlot);

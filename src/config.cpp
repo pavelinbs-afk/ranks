@@ -26,6 +26,130 @@ static void LoadExpSection(KeyValues* kv)
 	g_Cfg.expHostageRescue = kv->GetInt("lr_hostagerescued", 0);
 }
 
+static void LoadRewardPair(KeyValues* parent, const char* key, int& expOut, int& coinsOut)
+{
+	KeyValues* r = parent ? parent->FindKey(key, false) : nullptr;
+	if (!r)
+		return;
+	expOut = r->GetInt("exp", expOut);
+	coinsOut = r->GetInt("coins", coinsOut);
+}
+
+static void LoadRewardsSection(KeyValues* rewards)
+{
+	if (!rewards)
+		return;
+
+	int dummy = 0;
+	LoadRewardPair(rewards, "kill", g_Cfg.expKill, dummy);
+	LoadRewardPair(rewards, "kill_bot", g_Cfg.expKillBot, dummy);
+	LoadRewardPair(rewards, "death", g_Cfg.expDeath, dummy);
+	LoadRewardPair(rewards, "death_bot", g_Cfg.expDeathBot, dummy);
+	LoadRewardPair(rewards, "headshot", g_Cfg.expHeadshot, dummy);
+	LoadRewardPair(rewards, "assist", g_Cfg.expAssist, dummy);
+	LoadRewardPair(rewards, "suicide", g_Cfg.expSuicide, dummy);
+	LoadRewardPair(rewards, "teamkill", g_Cfg.expTeamkill, dummy);
+	LoadRewardPair(rewards, "round_win", g_Cfg.expRoundWin, dummy);
+	LoadRewardPair(rewards, "round_lose", g_Cfg.expRoundLose, dummy);
+	LoadRewardPair(rewards, "mvp", g_Cfg.expMvp, g_Cfg.coinsMvp);
+	LoadRewardPair(rewards, "bomb_plant", g_Cfg.expBombPlant, dummy);
+	LoadRewardPair(rewards, "bomb_defuse", g_Cfg.expBombDefuse, dummy);
+	LoadRewardPair(rewards, "bomb_drop", g_Cfg.expBombDrop, dummy);
+	LoadRewardPair(rewards, "bomb_pickup", g_Cfg.expBombPickup, dummy);
+	LoadRewardPair(rewards, "hostage_kill", g_Cfg.expHostageKill, dummy);
+	LoadRewardPair(rewards, "hostage_rescue", g_Cfg.expHostageRescue, dummy);
+
+	KeyValues* mk = rewards->FindKey("multikill", false);
+	if (mk)
+		g_Cfg.coinsMultikill = mk->GetInt("coins", g_Cfg.coinsMultikill);
+}
+
+static void LoadSmartExpDefaults()
+{
+	V_snprintf(g_Cfg.expMode, sizeof(g_Cfg.expMode), "%s", "competitive");
+	g_Cfg.roundMinSec          = 45;
+	g_Cfg.roundLoseDeathScale  = 3;
+	g_Cfg.roundCapExp          = 50;
+	g_Cfg.roundCapCoins        = 15;
+	g_Cfg.botKillLimit         = 5;
+	g_Cfg.botKillExpPercent    = 50;
+	g_Cfg.teamkillHumanOnly    = true;
+	g_Cfg.afkSec               = 90;
+	g_Cfg.afkBlockCoins        = true;
+	g_Cfg.afkBlockTimeExp       = true;
+	g_Cfg.suicideGraceSec      = 3.0f;
+}
+
+static void ApplyExpModePreset(const char* mode)
+{
+	if (!mode || !*mode || !V_stricmp(mode, "custom"))
+		return;
+
+	LoadSmartExpDefaults();
+
+	if (!V_stricmp(mode, "casual"))
+	{
+		g_Cfg.minPlayers       = 3;
+		g_Cfg.roundMinSec      = 30;
+		g_Cfg.roundCapExp      = 80;
+		g_Cfg.roundCapCoins    = 25;
+		g_Cfg.botKillLimit     = 8;
+		g_Cfg.botKillExpPercent = 50;
+		g_Cfg.roundLoseDeathScale = 4;
+	}
+	else if (!V_stricmp(mode, "competitive"))
+	{
+		g_Cfg.minPlayers       = 5;
+		g_Cfg.roundMinSec      = 45;
+		g_Cfg.roundCapExp      = 50;
+		g_Cfg.roundCapCoins    = 15;
+		g_Cfg.botKillLimit     = 5;
+		g_Cfg.botKillExpPercent = 50;
+		g_Cfg.roundLoseDeathScale = 3;
+	}
+	else if (!V_stricmp(mode, "farm"))
+	{
+		g_Cfg.minPlayers       = 2;
+		g_Cfg.roundMinSec      = 20;
+		g_Cfg.roundCapExp      = 0;
+		g_Cfg.roundCapCoins    = 0;
+		g_Cfg.botKillLimit     = 0;
+		g_Cfg.afkSec           = 120;
+		g_Cfg.roundLoseDeathScale = 0;
+	}
+}
+
+static void LoadSmartExpSection(KeyValues* smart)
+{
+	LoadSmartExpDefaults();
+	if (!smart)
+		return;
+
+	V_snprintf(g_Cfg.expMode, sizeof(g_Cfg.expMode), "%s", smart->GetString("lr_exp_mode", g_Cfg.expMode));
+	ApplyExpModePreset(g_Cfg.expMode);
+
+	if (smart->GetInt("lr_round_min_seconds", -1) >= 0)
+		g_Cfg.roundMinSec = smart->GetInt("lr_round_min_seconds", g_Cfg.roundMinSec);
+	if (smart->GetInt("lr_round_lose_death_scale", -1) >= 0)
+		g_Cfg.roundLoseDeathScale = smart->GetInt("lr_round_lose_death_scale", g_Cfg.roundLoseDeathScale);
+	if (smart->GetInt("lr_round_cap_exp", -1) >= 0)
+		g_Cfg.roundCapExp = smart->GetInt("lr_round_cap_exp", g_Cfg.roundCapExp);
+	if (smart->GetInt("lr_round_cap_coins", -1) >= 0)
+		g_Cfg.roundCapCoins = smart->GetInt("lr_round_cap_coins", g_Cfg.roundCapCoins);
+	if (smart->GetInt("lr_bot_kill_limit", -1) >= 0)
+		g_Cfg.botKillLimit = smart->GetInt("lr_bot_kill_limit", g_Cfg.botKillLimit);
+	if (smart->GetInt("lr_bot_kill_exp_percent", -1) >= 0)
+		g_Cfg.botKillExpPercent = smart->GetInt("lr_bot_kill_exp_percent", g_Cfg.botKillExpPercent);
+	g_Cfg.teamkillHumanOnly = smart->GetInt("lr_teamkill_human_only", g_Cfg.teamkillHumanOnly ? 1 : 0) != 0;
+	if (smart->GetInt("lr_afk_seconds", -1) >= 0)
+		g_Cfg.afkSec = smart->GetInt("lr_afk_seconds", g_Cfg.afkSec);
+	g_Cfg.afkBlockCoins = smart->GetInt("lr_afk_block_coins", g_Cfg.afkBlockCoins ? 1 : 0) != 0;
+	g_Cfg.afkBlockTimeExp = smart->GetInt("lr_afk_block_time_exp", g_Cfg.afkBlockTimeExp ? 1 : 0) != 0;
+	g_Cfg.suicideGraceSec = smart->GetFloat("lr_suicide_grace_seconds", g_Cfg.suicideGraceSec);
+	if (g_Cfg.suicideGraceSec < 0.5f)
+		g_Cfg.suicideGraceSec = 0.5f;
+}
+
 bool LoadSettings()
 {
 	KeyValues* kv = new KeyValues("LR_Settings");
@@ -114,6 +238,8 @@ bool LoadSettings()
 	g_Cfg.expDeathBot = s->GetInt("lr_death_is_bot", 0);
 	LoadExpSection(s);
 
+	LoadRewardsSection(kv->FindKey("Rewards", false));
+
 	memset(g_Cfg.bonus, 0, sizeof(g_Cfg.bonus));
 	KeyValues* b = kv->FindKey("Special_Bonuses", false);
 	if (b)
@@ -141,6 +267,8 @@ bool LoadSettings()
 		g_Cfg.coinsMvp            = 3;
 		g_Cfg.coinsMultikill      = 2;
 	}
+
+	LoadSmartExpSection(kv->FindKey("SmartExp", false));
 
 	// Wallet API removed — coins live in lvl_ranks.coins (MySQL).
 

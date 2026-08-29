@@ -182,6 +182,17 @@ static const PhraseSpec s_Specs[] = {
 	{"RoundExpResultAll",      "i"},
 	{"RoundCoinResultGive",    "i"},
 	{"RoundCoinResultAll",     "i"},
+	{"RoundSummaryEarnedBoth",  "ii"},
+	{"RoundSummaryEarnedExp",   "i"},
+	{"RoundSummaryEarnedCoins", "i"},
+	{"RoundSummaryMixed",       "ii"},
+	{"RoundSummaryLostExp",     "i"},
+	{"RoundSummaryNothing",     ""},
+	{"RoundSummaryNoPlayers",   "ii"},
+	{"RoundBreakdownTitle",     "ii"},
+	{"RoundBreakdownLine",      "si"},
+	{"RoundBreakdownCoinLine",  "si"},
+	{"RoundBreakdownEmpty",     ""},
 
 	{"ResetStatsDone",     ""},
 	{"ResetStatsCooldown", "ii"},    // hours, minutes
@@ -394,9 +405,14 @@ static void FormatPhraseHtmlBody(char* out, size_t outSize, const char* phraseKe
 
 static void WrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
 {
+	if (!prefixKey || !*prefixKey)
+	{
+		V_strncpy(out, body ? body : "", (int)outSize);
+		return;
+	}
 	std::string prefix = PhraseRaw(prefixKey);
 	ReplaceHtmlColors(prefix);
-	V_snprintf(out, outSize, "%s<br/>%s", prefix.c_str(), body);
+	V_snprintf(out, outSize, "%s<br/>%s", prefix.c_str(), body ? body : "");
 }
 
 void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
@@ -633,7 +649,7 @@ void LRCenterPhrase(int iSlot, const char* phraseKey, ...)
 	va_end(va);
 
 	char html[1200];
-	WrapCenterHtml(html, sizeof(html), body, "Prefix");
+	WrapCenterHtml(html, sizeof(html), body, nullptr);
 	LRCenterHtml(iSlot, html, 5.0f);
 }
 
@@ -648,7 +664,7 @@ void PhraseFormatHtml(char* out, size_t outSize, const char* phraseKey, ...)
 void LRCenterBody(int iSlot, const char* htmlBody, float durationSec)
 {
 	char html[4096];
-	WrapCenterHtml(html, sizeof(html), htmlBody ? htmlBody : "", "Prefix");
+	WrapCenterHtml(html, sizeof(html), htmlBody ? htmlBody : "", nullptr);
 	LRCenterHtml(iSlot, html, durationSec);
 }
 
@@ -661,7 +677,7 @@ void LRCenterFormat(int iSlot, float durationSec, const char* fmt, ...)
 	va_end(va);
 
 	char html[1200];
-	WrapCenterHtml(html, sizeof(html), body, "Prefix");
+	WrapCenterHtml(html, sizeof(html), body, nullptr);
 	LRCenterHtml(iSlot, html, durationSec);
 }
 

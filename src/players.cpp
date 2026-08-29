@@ -203,7 +203,7 @@ void CheckRank(int iSlot, bool bNotify)
 	ApiFireLevelChanged(iSlot, newLevel, oldLevel);
 }
 
-bool GrantCoins(int iSlot, int amount)
+bool GrantCoins(int iSlot, int amount, RoundCoinCat coinCat)
 {
 	if (amount <= 0 || !IsPlayerReady(iSlot) || !g_bCoreReady)
 		return false;
@@ -212,23 +212,88 @@ bool GrantCoins(int iSlot, int amount)
 	if (!p.steam64)
 		return false;
 
-	int64_t raw = (int64_t)p.coins + amount;
+	if (g_Cfg.roundCapCoins > 0 && p.roundCoins >= g_Cfg.roundCapCoins)
+		return false;
+
+	int grant = amount;
+	if (g_Cfg.roundCapCoins > 0)
+	{
+		int room = g_Cfg.roundCapCoins - p.roundCoins;
+		if (room <= 0)
+			return false;
+		if (grant > room)
+			grant = room;
+	}
+
+	int64_t raw = (int64_t)p.coins + grant;
 	if (raw > INT_MAX)
 		raw = INT_MAX;
 	p.coins = (int)raw;
-	p.roundCoins += amount;
+	p.roundCoins += grant;
+	AddRoundLedgerCoin(iSlot, coinCat, grant);
 
 	char q[256];
 	V_snprintf(q, sizeof(q),
 		"UPDATE `%s` SET `coins` = `coins` + %i WHERE `steamid64` = %llu;",
-		g_Cfg.tableName, amount, (unsigned long long)p.steam64);
+		g_Cfg.tableName, grant, (unsigned long long)p.steam64);
 	DB_Query(q);
 
 	return true;
 }
 
+void AddRoundLedgerExp(int iSlot, RoundLedgerCat cat, int delta)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !delta)
+		return;
+	if (cat >= RLEDGER_COUNT)
+		cat = RLEDGER_OTHER;
+	g_Players[iSlot].roundLedger.exp[cat] += delta;
+}
+
+void AddRoundLedgerCoin(int iSlot, RoundCoinCat cat, int amount)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || amount <= 0)
+		return;
+	if (cat >= RCOIN_COUNT)
+		cat = RCOIN_INTERVAL;
+	g_Players[iSlot].roundLedger.coins[cat] += amount;
+}
+
+void NotePlayerActivity(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+	g_Players[iSlot].lastActivityAt = time(nullptr);
+	g_Players[iSlot].roundAfk = false;
+}
+
+bool IsPlayerAfk(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || g_Cfg.afkSec <= 0)
+		return false;
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.lastActivityAt)
+		return false;
+	return p.roundAfk || (time(nullptr) - p.lastActivityAt >= g_Cfg.afkSec);
+}
+
+static int ApplyRoundExpCap(int iSlot, int scaledDelta, bool bypassRestrictions)
+{
+	if (bypassRestrictions || scaledDelta <= 0 || g_Cfg.roundCapExp <= 0)
+		return scaledDelta;
+
+	PlayerInfo& p = g_Players[iSlot];
+	int gained = p.roundExp > 0 ? p.roundExp : 0;
+	int room = g_Cfg.roundCapExp - gained;
+	if (room <= 0)
+		return 0;
+	if (scaledDelta > room)
+		return room;
+	return scaledDelta;
+}
+
 bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions,
-	int coins, const char* coinGrantKind)
+	int coins, const char* coinGrantKind, RoundLedgerCat ledgerCat, RoundCoinCat coinCat)
 {
 	if (!IsPlayerReady(iSlot))
 		return false;
@@ -243,8 +308,10 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 	if (!bypassRestrictions && scaledCoins > 0)
 		scaledCoins = ScaleExpByPlayerCount(scaledCoins);
 
+	scaledDelta = ApplyRoundExpCap(iSlot, scaledDelta, bypassRestrictions);
+
 	if (scaledDelta == 0 && scaledCoins <= 0)
-		return true;
+		return scaledDelta == 0 && delta == 0;
 
 	PlayerInfo& p = g_Players[iSlot];
 	int applied = 0;
@@ -261,13 +328,14 @@ bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestricti
 		applied = p.st.exp - oldExp;
 		p.roundExp += applied;
 		p.sess.exp += applied;
+		AddRoundLedgerExp(iSlot, ledgerCat, applied);
 
 		CheckRank(iSlot);
 		ApiFireExpChanged(iSlot, applied, p.st.exp);
 	}
 
 	if (scaledCoins > 0 && coinGrantKind)
-		GrantCoins(iSlot, scaledCoins);
+		GrantCoins(iSlot, scaledCoins, coinCat);
 
 	if (g_Cfg.showUsualMessage && bypassRestrictions && phraseKey && applied != 0)
 	{
@@ -285,6 +353,8 @@ bool GrantIntervalCoins(int iSlot)
 		return false;
 	if (!g_bAllowStatistic)
 		return false;
+	if (g_Cfg.afkBlockCoins && IsPlayerAfk(iSlot))
+		return false;
 
 	int amount = ScaleExpByPlayerCount(g_Cfg.coinsIntervalAmount);
 	if (amount <= 0)
@@ -296,7 +366,7 @@ bool GrantIntervalCoins(int iSlot)
 		return false;
 
 	p.lastCoinIntervalBucket = bucket;
-	return GrantCoins(iSlot, amount);
+	return GrantCoins(iSlot, amount, RCOIN_INTERVAL);
 }
 
 void TickActivePlaytime()
@@ -316,11 +386,25 @@ void TickActivePlaytime()
 		if (!p.loaded || !IsPlayerReady(i))
 			continue;
 		if (!IsPlayerOnActiveTeam(i))
+		{
+			p.roundAfk = false;
 			continue;
+		}
+
+		if (g_bAllowStatistic)
+		{
+			p.roundSecActive++;
+			if (g_Cfg.afkSec > 0 && p.lastActivityAt
+				&& (now - p.lastActivityAt) >= g_Cfg.afkSec)
+				p.roundAfk = true;
+		}
 
 		p.sessionActiveSec++;
 
 		if (g_Cfg.coinsIntervalSec <= 0 || g_Cfg.coinsIntervalAmount <= 0)
+			continue;
+
+		if (g_Cfg.afkBlockCoins && IsPlayerAfk(i))
 			continue;
 
 		p.activeSecSinceCoin++;
@@ -395,6 +479,10 @@ void GiveTimeExp()
 		PlayerInfo& p = g_Players[i];
 		if (!p.loaded || !IsPlayerReady(i))
 			continue;
+		if (g_Cfg.afkBlockTimeExp && IsPlayerAfk(i))
+			continue;
+		if (!IsPlayerOnActiveTeam(i))
+			continue;
 
 		if (p.timeExpAt == 0)
 		{
@@ -405,7 +493,7 @@ void GiveTimeExp()
 			continue;
 
 		p.timeExpAt = now + g_Cfg.timeExpInterval;
-		ChangeExp(i, g_Cfg.timeExpAmount, "TimeExp", false);
+		ChangeExp(i, g_Cfg.timeExpAmount, "TimeExp", false, 0, nullptr, RLEDGER_OTHER);
 		if (g_Cfg.saveMode)
 			SavePlayer(i);
 	}
@@ -606,6 +694,12 @@ void ResetPlayerStats(int iSlot)
 	p.killStreak = 0;
 	p.roundExp = 0;
 	p.roundCoins = 0;
+	p.roundSecActive = 0;
+	p.roundDeaths = 0;
+	p.roundBotKills = 0;
+	p.roundAfk = false;
+	p.lastActivityAt = 0;
+	p.roundLedger.Clear();
 	p.resetCooldownUntil = cooldown;
 
 	SavePlayer(iSlot);

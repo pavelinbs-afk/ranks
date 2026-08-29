@@ -33,7 +33,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.6.1.7"; }
+	const char* GetVersion() override		{ return "2.6.3"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
@@ -89,6 +89,20 @@ struct LRSettings
 	int coinsMvp;
 	int coinsMultikill;
 
+	// Smart exp (SmartExp section + lr_exp_mode presets)
+	char expMode[24];           // custom | casual | competitive | farm
+	int  roundMinSec;           // min active-team seconds for round win/lose
+	int  roundLoseDeathScale;   // at N+ deaths in round, lose penalty halved (0=off)
+	int  roundCapExp;           // max exp gain per round (0=unlimited)
+	int  roundCapCoins;         // max coins gain per round (0=unlimited)
+	int  botKillLimit;          // full bot-kill exp for first N per round (0=all)
+	int  botKillExpPercent;     // exp % after limit
+	bool teamkillHumanOnly;     // teamkill penalty only vs loaded humans
+	int  afkSec;                // no shoot/hurt/kill for N sec → AFK (0=off)
+	bool afkBlockCoins;
+	bool afkBlockTimeExp;
+	float suicideGraceSec;
+
 	// ranks (level thresholds, ascending; level i+1 requires ranksExp[i])
 	std::vector<int> ranksExp;
 	std::vector<std::string> ranksKey; // phrase keys ("rank_1", ...)
@@ -115,6 +129,51 @@ struct LRTabSettings
 // ---------------------------------------------------------------------------
 // Per-player state
 // ---------------------------------------------------------------------------
+
+// Categories for !round breakdown and round ledger.
+enum RoundLedgerCat : uint8_t
+{
+	RLEDGER_KILL = 0,
+	RLEDGER_DEATH,
+	RLEDGER_WINLOSE,
+	RLEDGER_MVP,
+	RLEDGER_BONUS,
+	RLEDGER_BOMB,
+	RLEDGER_ASSIST,
+	RLEDGER_PENALTY,
+	RLEDGER_OTHER,
+	RLEDGER_COUNT
+};
+
+enum RoundCoinCat : uint8_t
+{
+	RCOIN_MVP = 0,
+	RCOIN_MULTIKILL,
+	RCOIN_INTERVAL,
+	RCOIN_COUNT
+};
+
+struct RoundLedger
+{
+	int exp[RLEDGER_COUNT] = {};
+	int coins[RCOIN_COUNT] = {};
+
+	void Clear() { *this = RoundLedger{}; }
+
+	int TotalExp() const
+	{
+		int s = 0;
+		for (int v : exp) s += v;
+		return s;
+	}
+
+	int TotalCoins() const
+	{
+		int s = 0;
+		for (int v : coins) s += v;
+		return s;
+	}
+};
 
 struct PlayerStats
 {
@@ -151,6 +210,15 @@ struct PlayerInfo
 	time_t timeExpAt = 0;      // next periodic time-exp grant (0 = arm on first frame)
 	time_t resetCooldownUntil = 0;
 
+	int roundSecActive = 0;    // seconds on T/CT this round (for win/lose eligibility)
+	int roundDeaths = 0;       // deaths this round (progressive lose penalty)
+	int roundBotKills = 0;
+	time_t lastActivityAt = 0; // AFK detection (weapon_fire / hurt / kill)
+	bool roundAfk = false;
+
+	RoundLedger roundLedger;
+	RoundLedger lastRoundLedger;
+
 	uint64_t oldButtons = 0;   // scoreboard button edge detection
 	bool revealSent = false;   // ServerRankRevealAll sent after load
 	int  tabOverride = 0;      // lr_tab_test preview badge (0 = off)
@@ -160,6 +228,8 @@ struct PlayerInfo
 	float tabIconsAt = 0.0f;       // curtime when custom skillgroup IDs may be written
 	float tabRefreshUntil = 0.0f;  // curtime until which we keep force-dirtying
 	bool  tabIconsApplied = false;
+
+	float ignoreSuicideUntil = 0.0f; // curtime: no lr_suicide penalty (team → spec)
 
 	void Reset() { *this = PlayerInfo(); }
 };
@@ -230,7 +300,13 @@ void FormatPlaytimeLong(int64_t seconds, char* out, int outSize);
 // Central exp mutation: applies floors, session stats, rank check, chat message.
 // Returns true if the change was applied (player ready + stats allowed or bypassed).
 bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions = false,
-	int coins = 0, const char* coinGrantKind = nullptr);
+	int coins = 0, const char* coinGrantKind = nullptr,
+	RoundLedgerCat ledgerCat = RLEDGER_OTHER, RoundCoinCat coinCat = RCOIN_MVP);
+
+void NotePlayerActivity(int iSlot);
+bool IsPlayerAfk(int iSlot);
+void AddRoundLedgerExp(int iSlot, RoundLedgerCat cat, int delta);
+void AddRoundLedgerCoin(int iSlot, RoundCoinCat cat, int amount);
 
 void SavePlayer(int iSlot, bool disconnect = false);
 
@@ -260,7 +336,7 @@ void ClearPlayerOnlinePresence(int iSlot);
 bool GrantIntervalCoins(int iSlot);
 
 // Atomic MySQL grant: UPDATE coins = coins + amount. Updates memory + roundCoins.
-bool GrantCoins(int iSlot, int amount);
+bool GrantCoins(int iSlot, int amount, RoundCoinCat coinCat = RCOIN_INTERVAL);
 
 // API hook broadcast (implemented in lr_core.cpp)
 void ApiFireCoreReady();
