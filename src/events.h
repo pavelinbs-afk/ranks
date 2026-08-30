@@ -20,5 +20,3 @@ int ScaleExpByPlayerCount(int delta);
 // Round-start snapshot (for player-count messages).
 bool Events_WasRoundExpAllowed();
 int Events_RoundStartHumans();
-
-void PrintLastRoundBreakdown(int iSlot);

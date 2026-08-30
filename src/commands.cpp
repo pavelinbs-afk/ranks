@@ -104,16 +104,6 @@ static void ParseCmdWord(const char* text, char* out, int outSize)
 	}
 }
 
-static void CmdRound(int iSlot)
-{
-	if (!g_Players[iSlot].loaded)
-	{
-		LRPrintPhrase(iSlot, "NotLoaded");
-		return;
-	}
-	PrintLastRoundBreakdown(iSlot);
-}
-
 static bool RunChatCommand(int iSlot, const char* text)
 {
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
@@ -141,8 +131,6 @@ static bool RunChatCommand(int iSlot, const char* text)
 		CmdTop(iSlot, true);
 	else if (!V_stricmp(cmd, "session"))
 		CmdSession(iSlot);
-	else if (!V_stricmp(cmd, "round") || !V_stricmp(cmd, "раунд"))
-		CmdRound(iSlot);
 	else if (!V_stricmp(cmd, "resetstats"))
 		CmdResetStats(iSlot);
 	else
@@ -165,7 +153,7 @@ bool Commands_IsChatCommand(int iSlot, const char* text)
 
 	static const char* known[] = {
 		"rank", "ранг", "lvl", "level", "лвл",
-		"top", "toptime", "session", "round", "раунд", "resetstats",
+		"top", "toptime", "session", "resetstats",
 	};
 	for (const char* k : known)
 	{

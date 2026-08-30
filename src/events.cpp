@@ -160,46 +160,6 @@ static void PrintRoundSummary(int iSlot, int roundExp, int roundCoins)
 		LRPrintPhrase(iSlot, "RoundSummaryNothing");
 }
 
-void PrintLastRoundBreakdown(int iSlot)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !g_Players[iSlot].loaded)
-		return;
-
-	const RoundLedger& L = g_Players[iSlot].lastRoundLedger;
-	if (L.TotalExp() == 0 && L.TotalCoins() == 0)
-	{
-		LRPrintPhrase(iSlot, "RoundBreakdownEmpty");
-		return;
-	}
-
-	LRPrintPhrase(iSlot, "RoundBreakdownTitle", L.TotalExp(), L.TotalCoins());
-
-	if (L.exp[RLEDGER_KILL])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Убийства", L.exp[RLEDGER_KILL]);
-	if (L.exp[RLEDGER_DEATH])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Смерти", L.exp[RLEDGER_DEATH]);
-	if (L.exp[RLEDGER_WINLOSE])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Раунд", L.exp[RLEDGER_WINLOSE]);
-	if (L.exp[RLEDGER_MVP])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "MVP", L.exp[RLEDGER_MVP]);
-	if (L.exp[RLEDGER_BONUS])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Серия", L.exp[RLEDGER_BONUS]);
-	if (L.exp[RLEDGER_BOMB])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Бомба", L.exp[RLEDGER_BOMB]);
-	if (L.exp[RLEDGER_ASSIST])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Ассисты", L.exp[RLEDGER_ASSIST]);
-	if (L.exp[RLEDGER_PENALTY])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Штрафы", L.exp[RLEDGER_PENALTY]);
-	if (L.exp[RLEDGER_OTHER])
-		LRPrintPhrase(iSlot, "RoundBreakdownLine", "Прочее", L.exp[RLEDGER_OTHER]);
-	if (L.coins[RCOIN_MVP])
-		LRPrintPhrase(iSlot, "RoundBreakdownCoinLine", "MVP", L.coins[RCOIN_MVP]);
-	if (L.coins[RCOIN_MULTIKILL])
-		LRPrintPhrase(iSlot, "RoundBreakdownCoinLine", "Серия", L.coins[RCOIN_MULTIKILL]);
-	if (L.coins[RCOIN_INTERVAL])
-		LRPrintPhrase(iSlot, "RoundBreakdownCoinLine", "Время", L.coins[RCOIN_INTERVAL]);
-}
-
 void CheckAllowStatistic(bool /*roundStart*/)
 {
 	g_bAllowStatistic = !(g_Cfg.blockWarmup && IsWarmup())

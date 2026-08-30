@@ -33,7 +33,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.6.3"; }
+	const char* GetVersion() override		{ return "2.6.4"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
@@ -130,7 +130,7 @@ struct LRTabSettings
 // Per-player state
 // ---------------------------------------------------------------------------
 
-// Categories for !round breakdown and round ledger.
+// Categories for round ledger (internal accounting).
 enum RoundLedgerCat : uint8_t
 {
 	RLEDGER_KILL = 0,

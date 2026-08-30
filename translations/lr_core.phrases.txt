@@ -315,6 +315,11 @@
 		"ru"	"Прошлый раунд: {GREEN}%i{DEFAULT} опыта, {GOLD}%i{DEFAULT} коинов"
 		"en"	"Last round: {GREEN}%i{DEFAULT} exp, {GOLD}%i{DEFAULT} coins"
 	}
+	"RoundBreakdownCurrentTitle"
+	{
+		"ru"	"Текущий раунд: {GREEN}%i{DEFAULT} опыта, {GOLD}%i{DEFAULT} коинов"
+		"en"	"This round: {GREEN}%i{DEFAULT} exp, {GOLD}%i{DEFAULT} coins"
+	}
 	"RoundBreakdownLine"
 	{
 		"ru"	"  {GREY}%s:{DEFAULT} {GREEN}%i{DEFAULT} опыта"
@@ -329,6 +334,11 @@
 	{
 		"ru"	"Нет данных за прошлый раунд (сыграйте раунд или опыт был отключён)."
 		"en"	"No data for the last round yet."
+	}
+	"RoundBreakdownCurrentEmpty"
+	{
+		"ru"	"В текущем раунде пока ничего не заработано."
+		"en"	"Nothing earned in this round yet."
 	}
 	"ResetStatsDone"
 	{
