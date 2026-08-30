@@ -5,6 +5,7 @@
 #include "db.h"
 #include "events.h"
 #include "menu.h"
+#include "menu_layout.h"
 #include "players.h"
 
 #include <convar.h>
@@ -114,7 +115,8 @@ static bool RunChatCommand(int iSlot, const char* text)
 	int menuKey = 0;
 	if (ParseMenuKey(text, &menuKey) && Menu_IsActive(iSlot))
 	{
-		Menu_TryHandleKey(iSlot, menuKey);
+		if (!Menu_IsWasdActive(iSlot))
+			Menu_TryHandleKey(iSlot, menuKey);
 		return true;
 	}
 
@@ -552,6 +554,8 @@ CON_COMMAND_F(lr_reload, "Reload lr_core configs", FCVAR_GAMEDLL)
 		return;
 	}
 
+	MenuLayout_Reload();
+
 	// The Ranks list may have changed length: re-derive every level so nothing
 	// keeps an index into the old, longer list.
 	CGlobalVars* gv = GetGlobals();
@@ -581,8 +585,38 @@ CON_COMMAND_F(lr_status, "lr_core status", FCVAR_GAMEDLL)
 		if (g_Players[i].loaded)
 			loaded++;
 	}
-	Msg("[LR] ready=%d db_connected=%d players_online=%d players_loaded=%d db_players=%d allow_stats=%d custom_round=%d\n",
-		g_bCoreReady, DB_IsConnected(), online, loaded, g_iDBCountPlayers, g_bAllowStatistic, g_bCustomRoundActive);
+	int menuBytes = 0;
+	bool menuLoaded = false;
+	char menuPath[512] = {};
+	MenuLayout_GetStatus(menuBytes, menuLoaded, menuPath, sizeof(menuPath));
+
+	Msg("[LR] ready=%d db_connected=%d players_online=%d players_loaded=%d db_players=%d allow_stats=%d custom_round=%d menu_selector=%d menu_json_bytes=%d menu_json_path=%s\n",
+		g_bCoreReady, DB_IsConnected(), online, loaded, g_iDBCountPlayers, g_bAllowStatistic, g_bCustomRoundActive,
+		menuLoaded ? 1 : 0, menuBytes, menuPath[0] ? menuPath : "(not found)");
+
+	if (args.ArgC() >= 2)
+	{
+		uint64_t steam64 = strtoull(args[1], nullptr, 10);
+		if (steam64)
+		{
+			int iSlot = FindSlotBySteam64(steam64);
+			LRMenuLayout layout = MenuLayout_GetTypeForSteam64(steam64);
+			const char* name = "html";
+			if (layout == LR_MENU_CHAT)
+				name = "chat";
+			else if (layout == LR_MENU_WASD)
+				name = "wasd";
+
+			int optCount = 0, infoCount = 0;
+			bool wasdActive = false;
+			if (iSlot >= 0)
+				MenuLayout_GetWasdDebug(iSlot, optCount, infoCount, wasdActive);
+
+			Msg("[LR] menu_layout steam64=%llu json_type=%i(%s) slot=%i wasd_active=%d wasd_options=%d wasd_info=%d\n",
+				(unsigned long long)steam64, (int)layout, name, iSlot, wasdActive ? 1 : 0,
+				optCount, infoCount);
+		}
+	}
 }
 
 CON_COMMAND_F(lr_customround, "lr_customround <0|1> — VIP custom round state (blocks XP when lr_block_customround=1)", FCVAR_GAMEDLL)

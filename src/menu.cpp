@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "menu_layout.h"
 #include "lr_core.h"
 #include "chat.h"
 #include "commands.h"
@@ -35,6 +36,7 @@ struct MenuState
 	float until = 0.0f;
 	float nextRefresh = 0.0f;
 	uint64_t steam64 = 0;
+	LRMenuLayout layout = LR_MENU_HTML;
 	std::vector<TopRow> topRows;
 	char html[4096];
 };
@@ -120,8 +122,19 @@ static void MenuClose(int iSlot)
 {
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return;
+	MenuLayout_CloseWasd(iSlot);
 	s_Menu[iSlot] = MenuState();
 	LRCenterStop(iSlot);
+}
+
+void Menu_Close(int iSlot)
+{
+	MenuClose(iSlot);
+}
+
+bool Menu_IsWasdActive(int iSlot)
+{
+	return MenuLayout_IsWasdActive(iSlot);
 }
 
 static void MenuShow(int iSlot, const char* html)
@@ -132,14 +145,38 @@ static void MenuShow(int iSlot, const char* html)
 	CGlobalVars* gv = GetGlobals();
 	float now = gv ? gv->curtime : 0.0f;
 
-	char wrapped[4096];
-	LRWrapCenterHtml(wrapped, sizeof(wrapped), html, "");
-
-	V_strncpy(s_Menu[iSlot].html, wrapped, sizeof(s_Menu[iSlot].html));
+	LRMenuLayout layout = MenuLayout_GetPlayerType(iSlot);
+	s_Menu[iSlot].layout = layout;
 	s_Menu[iSlot].until = now + kMenuDuration;
 	s_Menu[iSlot].nextRefresh = now;
 	s_Menu[iSlot].steam64 = g_Players[iSlot].steam64;
 
+	switch (layout)
+	{
+		case LR_MENU_CHAT:
+			MenuLayout_CloseWasd(iSlot);
+			LRCenterStop(iSlot);
+			s_Menu[iSlot].html[0] = '\0';
+			MenuLayout_ShowChatMenu(iSlot, html);
+			return;
+
+		case LR_MENU_WASD:
+		{
+			char wrapped[4096];
+			LRWrapCenterHtml(wrapped, sizeof(wrapped), html, "");
+			V_strncpy(s_Menu[iSlot].html, wrapped, sizeof(s_Menu[iSlot].html));
+			MenuLayout_OpenWasd(iSlot, html, s_Menu[iSlot].until);
+			return;
+		}
+
+		default:
+			MenuLayout_CloseWasd(iSlot);
+			break;
+	}
+
+	char wrapped[4096];
+	LRWrapCenterHtml(wrapped, sizeof(wrapped), html, "");
+	V_strncpy(s_Menu[iSlot].html, wrapped, sizeof(s_Menu[iSlot].html));
 	LRCenterHtml(iSlot, wrapped, kMenuDuration);
 }
 
@@ -514,6 +551,13 @@ bool Menu_IsActive(int iSlot)
 	return s_Menu[iSlot].screen != MenuScreen::None;
 }
 
+float Menu_GetUntil(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return 0.0f;
+	return s_Menu[iSlot].until;
+}
+
 bool Menu_TryHandleKey(int iSlot, int key)
 {
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || key < 1 || key > 9)
@@ -669,6 +713,8 @@ bool Menu_TryHandleKey(int iSlot, int key)
 
 void Menu_OnGameFrame()
 {
+	MenuLayout_PollWasdMenus();
+
 	CGlobalVars* gv = GetGlobals();
 	if (!gv)
 		return;
@@ -685,6 +731,9 @@ void Menu_OnGameFrame()
 			MenuClose(i);
 			continue;
 		}
+
+		if (m.layout != LR_MENU_HTML)
+			continue;
 
 		if (now >= m.nextRefresh)
 		{

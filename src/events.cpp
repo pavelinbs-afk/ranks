@@ -1,5 +1,6 @@
 #include "lr_core.h"
 #include "events.h"
+#include "menu_layout.h"
 #include "chat.h"
 #include "schema.h"
 
@@ -142,7 +143,7 @@ static void PrintRoundSummary(int iSlot, int roundExp, int roundCoins)
 {
 	if (!Events_WasRoundExpAllowed() && roundExp == 0 && roundCoins == 0)
 	{
-		LRPrintPhrase(iSlot, "RoundSummaryNoPlayers", s_iRoundStartHumans, g_Cfg.minPlayers);
+		LRPrintPhrase(iSlot, "RoundSummaryNoPlayers");
 		return;
 	}
 
@@ -539,6 +540,7 @@ void Events_Unregister()
 
 void Events_OnStartupServer()
 {
+	MenuLayout_Reload();
 	s_pGameRules = nullptr;
 	s_bRegistered = false;
 	s_iRetryThrottle = 0;

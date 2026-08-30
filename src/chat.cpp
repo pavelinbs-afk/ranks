@@ -188,7 +188,7 @@ static const PhraseSpec s_Specs[] = {
 	{"RoundSummaryMixed",       "ii"},
 	{"RoundSummaryLostExp",     "i"},
 	{"RoundSummaryNothing",     ""},
-	{"RoundSummaryNoPlayers",   "ii"},
+	{"RoundSummaryNoPlayers",   ""},
 
 	{"ResetStatsDone",     ""},
 	{"ResetStatsCooldown", "ii"},    // hours, minutes
