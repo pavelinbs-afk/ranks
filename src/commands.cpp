@@ -42,8 +42,8 @@ static void CmdRank(int iSlot)
 	uint64_t steam64 = p.steam64;
 	char q[512];
 	V_snprintf(q, sizeof(q),
-		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`);",
-		g_Cfg.tableName, p.level, p.level, p.st.exp);
+		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s);",
+		g_Cfg.tableName, p.level, p.level, p.st.exp, LR_SQL_LASTCONNECT_ACTIVE);
 
 	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
 		PlayerInfo& p = g_Players[iSlot];
@@ -699,10 +699,10 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 	{
 		char q[512];
 		V_snprintf(q, sizeof(q),
-			"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`), "
-			"(SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`);",
+			"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s), "
+			"(SELECT COUNT(`steam`) FROM `%s` WHERE %s);",
 			g_Cfg.tableName, g_Players[iSlot].level, g_Players[iSlot].level,
-			g_Players[iSlot].st.exp, g_Cfg.tableName);
+			g_Players[iSlot].st.exp, LR_SQL_LASTCONNECT_ACTIVE, g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE);
 
 		DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
 			PlayerInfo& p = g_Players[iSlot];
@@ -723,11 +723,14 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 	// Offline: everything from the DB.
 	char q[1024];
 	V_snprintf(q, sizeof(q),
-		"SELECT `name`, `rank`, `value`, `coins`, `kills`, `deaths`, `headshots`, `assists`, `playtime`, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND `lastconnect`), "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`) "
+		"SELECT `name`, `rank`, `value`, `coins`, `kills`, `deaths`, `headshots`, `assists`, "
+		"`playtime_sec_norm`, `playtime_h`, `playtime_m`, `playtime_s`, `playtime`, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND %s), "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE %s) "
 		"FROM `%s` `p` WHERE `steamid64` = %llu LIMIT 1;",
-		g_Cfg.tableName, g_Cfg.tableName, g_Cfg.tableName, (unsigned long long)steam64);
+		g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE,
+		g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE,
+		g_Cfg.tableName, (unsigned long long)steam64);
 
 	DB_Query(q, [steam64](const DBResult& r) {
 		if (!r.ok)
@@ -741,9 +744,12 @@ CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top plac
 			return;
 		}
 
-		PrintStatsJson(steam64, r.Get(0, 0), r.GetInt(0, 1), r.GetInt(0, 2), 0,
-			r.GetInt(0, 9), r.GetInt(0, 10),
+		int64_t playtime = DB_PlaytimeFromNormalized(
+			r.GetInt64(0, 8), r.GetInt(0, 9), r.GetInt(0, 10), r.GetInt(0, 11), r.GetInt64(0, 12));
+
+		PrintStatsJson(steam64, r.Get(0, 0), r.GetInt(0, 1), r.GetInt(0, 2), r.GetInt(0, 3),
+			r.GetInt(0, 13), r.GetInt(0, 14),
 			r.GetInt(0, 4), r.GetInt(0, 5), r.GetInt(0, 6), r.GetInt(0, 7),
-			r.GetInt64(0, 8), 0, false);
+			playtime, 0, false);
 	});
 }

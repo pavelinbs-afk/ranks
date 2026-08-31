@@ -438,10 +438,11 @@ void PulseOnlinePresence()
 		if (!p.loaded || !p.steam64)
 			continue;
 
-		char q[320];
+		char q[420];
 		V_snprintf(q, sizeof(q),
-			"UPDATE `%s` SET `online` = %i, `lastconnect` = %lld WHERE `steam` = '%s';",
-			g_Cfg.tableName, g_Cfg.serverId, (long long)now, p.steamId);
+			"UPDATE `%s` SET `online` = %i, `lastconnect_norm` = %lld, `lastconnect_at` = FROM_UNIXTIME(%lld), "
+			"`lastconnect` = %lld WHERE `steam` = '%s';",
+			g_Cfg.tableName, g_Cfg.serverId, (long long)now, (long long)now, (long long)now, p.steamId);
 		DB_Query(q);
 	}
 }
@@ -456,10 +457,11 @@ void ClearPlayerOnlinePresence(int iSlot)
 		return;
 
 	time_t now = time(nullptr);
-	char q[320];
+	char q[420];
 	V_snprintf(q, sizeof(q),
-		"UPDATE `%s` SET `online` = 0, `lastconnect` = %lld WHERE `steam` = '%s';",
-		g_Cfg.tableName, (long long)now, p.steamId);
+		"UPDATE `%s` SET `online` = 0, `lastconnect_norm` = %lld, `lastconnect_at` = FROM_UNIXTIME(%lld), "
+		"`lastconnect` = %lld WHERE `steam` = '%s';",
+		g_Cfg.tableName, (long long)now, (long long)now, (long long)now, p.steamId);
 	DB_Query(q);
 }
 
@@ -516,10 +518,10 @@ void RefreshTopPositions(int iSlot)
 	char q[512];
 	V_snprintf(q, sizeof(q),
 		"SELECT "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`) AS exppos, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `playtime` >= %lld AND `lastconnect`) AS timepos;",
-		g_Cfg.tableName, p.level, p.level, p.st.exp,
-		g_Cfg.tableName, (long long)playtime);
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s) AS exppos, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE %s >= %lld AND %s) AS timepos;",
+		g_Cfg.tableName, p.level, p.level, p.st.exp, LR_SQL_LASTCONNECT_ACTIVE,
+		g_Cfg.tableName, LR_COL_PLAYTIME_SEC, (long long)playtime, LR_SQL_LASTCONNECT_ACTIVE);
 
 	DB_Query(q, [iSlot, steam64, gen](const DBResult& r) {
 		PlayerInfo& p = g_Players[iSlot];
@@ -558,11 +560,13 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 	char q[1024];
 	V_snprintf(q, sizeof(q),
 		"SELECT `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, `headshots`, `assists`, "
-		"`round_win`, `round_lose`, `playtime`, `coins`, `reset_cooldown`, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND `lastconnect`) AS exppos, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE `playtime` >= `p`.`playtime` AND `lastconnect`) AS timepos "
+		"`round_win`, `round_lose`, `playtime_sec_norm`, `playtime_h`, `playtime_m`, `playtime_s`, `playtime`, `coins`, `reset_cooldown`, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND %s) AS exppos, "
+		"(SELECT COUNT(`steam`) FROM `%s` WHERE %s >= `p`.`playtime_sec_norm` AND %s) AS timepos "
 		"FROM `%s` `p` WHERE `steam` = '%s' LIMIT 1;",
-		g_Cfg.tableName, g_Cfg.tableName, g_Cfg.tableName, p.steamId);
+		g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE,
+		g_Cfg.tableName, LR_COL_PLAYTIME_SEC, LR_SQL_LASTCONNECT_ACTIVE,
+		g_Cfg.tableName, p.steamId);
 
 	DB_Query(q, [iSlot, steam64, gen = s_PlayerGen[iSlot]](const DBResult& r) {
 		PlayerInfo& p = g_Players[iSlot];
@@ -585,22 +589,38 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 			p.st.assists   = r.GetInt(0, 7);
 			p.st.roundWin  = r.GetInt(0, 8);
 			p.st.roundLose = r.GetInt(0, 9);
-			p.dbPlaytime   = r.GetInt64(0, 10);
-			p.coins        = r.GetInt(0, 11);
+			p.dbPlaytime   = DB_PlaytimeFromNormalized(
+				r.GetInt64(0, 10), r.GetInt(0, 11), r.GetInt(0, 12), r.GetInt(0, 13), r.GetInt64(0, 14));
+			p.coins        = r.GetInt(0, 15);
 			if (p.coins < 0)
 				p.coins = 0;
-			p.resetCooldownUntil = (time_t)r.GetInt64(0, 12);
-			p.posTop       = r.GetInt(0, 13);
-			p.posTopTime   = r.GetInt(0, 14);
+			p.resetCooldownUntil = (time_t)r.GetInt64(0, 16);
+			p.posTop       = r.GetInt(0, 17);
+			p.posTopTime   = r.GetInt(0, 18);
 
 			NormalizeRankState(p.level, p.st.exp);
 			p.loaded = true;
 
+			if (r.GetInt64(0, 10) == 0 && p.dbPlaytime > 0)
+			{
+				DBPlaytimeNormalized ptFix = DB_SplitPlaytimeSeconds(p.dbPlaytime);
+				char fixQ[640];
+				V_snprintf(fixQ, sizeof(fixQ),
+					"UPDATE `%s` SET `playtime_sec_norm` = %lld, `playtime_h` = %u, `playtime_m` = %u, "
+					"`playtime_s` = %u, `playtime` = %lld WHERE `steam` = '%s';",
+					g_Cfg.tableName, (long long)ptFix.totalSec, (unsigned)ptFix.hours,
+					(unsigned)ptFix.minutes, (unsigned)ptFix.seconds, (long long)ptFix.totalSec, p.steamId);
+				DB_Query(fixQ);
+				RefreshTopPositions(iSlot);
+			}
+
 			char q2[1024];
+			time_t nowUx = time(nullptr);
 			V_snprintf(q2, sizeof(q2),
-				"UPDATE `%s` SET `online` = %i, `lastconnect` = %lld, `steamid64` = %llu, `name` = '%s', `rank` = %i, `value` = %i, `xp_cumulative` = 1 "
+				"UPDATE `%s` SET `online` = %i, `lastconnect_norm` = %lld, `lastconnect_at` = FROM_UNIXTIME(%lld), "
+				"`lastconnect` = %lld, `steamid64` = %llu, `name` = '%s', `rank` = %i, `value` = %i, `xp_cumulative` = 1 "
 				"WHERE `steam` = '%s';",
-				g_Cfg.tableName, g_Cfg.serverId, (long long)time(nullptr),
+				g_Cfg.tableName, g_Cfg.serverId, (long long)nowUx, (long long)nowUx, (long long)nowUx,
 				(unsigned long long)p.steam64, DB_Escape(p.name).c_str(), p.level, p.st.exp, p.steamId);
 			DB_Query(q2);
 		}
@@ -613,12 +633,15 @@ void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent)
 			g_iDBCountPlayers++;
 
 			char q2[768];
+			time_t nowUx = time(nullptr);
 			V_snprintf(q2, sizeof(q2),
-				"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `lastconnect`, `online`, `xp_cumulative`) "
-				"VALUES ('%s', %llu, '%s', %i, %i, %lld, %i, 1) "
-				"ON DUPLICATE KEY UPDATE `steamid64` = VALUES(`steamid64`), `online` = VALUES(`online`);",
+				"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `lastconnect_norm`, `lastconnect_at`, `lastconnect`, `online`, `xp_cumulative`) "
+				"VALUES ('%s', %llu, '%s', %i, %i, %lld, FROM_UNIXTIME(%lld), %lld, %i, 1) "
+				"ON DUPLICATE KEY UPDATE `steamid64` = VALUES(`steamid64`), `online` = VALUES(`online`), "
+				"`lastconnect_norm` = VALUES(`lastconnect_norm`), `lastconnect_at` = VALUES(`lastconnect_at`), "
+				"`lastconnect` = VALUES(`lastconnect`);",
 				g_Cfg.tableName, p.steamId, (unsigned long long)p.steam64,
-				DB_Escape(p.name).c_str(), p.st.exp, p.level, (long long)time(nullptr), g_Cfg.serverId);
+				DB_Escape(p.name).c_str(), p.st.exp, p.level, (long long)nowUx, (long long)nowUx, (long long)nowUx, g_Cfg.serverId);
 			DB_Query(q2);
 		}
 
@@ -642,24 +665,29 @@ void SavePlayer(int iSlot, bool disconnect)
 
 	time_t now = time(nullptr);
 	int64_t totalPlaytime = TotalPlaytime(iSlot);
+	DBPlaytimeNormalized ptNorm = DB_SplitPlaytimeSeconds(totalPlaytime);
 
-	char q[1536];
+	char q[2048];
 	V_snprintf(q, sizeof(q),
 		"INSERT INTO `%s` (`steam`, `steamid64`, `name`, `value`, `rank`, `kills`, `deaths`, `shoots`, `hits`, "
-		"`headshots`, `assists`, `round_win`, `round_lose`, `playtime`, `lastconnect`, `online`, `reset_cooldown`, `xp_cumulative`) "
-		"VALUES ('%s', %llu, '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %lld, %lld, %i, %lld, 1) "
+		"`headshots`, `assists`, `round_win`, `round_lose`, `playtime_sec_norm`, `playtime_h`, `playtime_m`, `playtime_s`, "
+		"`lastconnect_norm`, `lastconnect_at`, `lastconnect`, `playtime`, `online`, `reset_cooldown`, `xp_cumulative`) "
+		"VALUES ('%s', %llu, '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %lld, %u, %u, %u, %lld, FROM_UNIXTIME(%lld), %lld, %lld, %i, %lld, 1) "
 		"ON DUPLICATE KEY UPDATE "
 		"`steamid64` = VALUES(`steamid64`), `name` = VALUES(`name`), `value` = VALUES(`value`), "
 		"`rank` = VALUES(`rank`), `kills` = VALUES(`kills`), `deaths` = VALUES(`deaths`), "
 		"`shoots` = VALUES(`shoots`), `hits` = VALUES(`hits`), `headshots` = VALUES(`headshots`), "
 		"`assists` = VALUES(`assists`), `round_win` = VALUES(`round_win`), `round_lose` = VALUES(`round_lose`), "
-		"`playtime` = VALUES(`playtime`), `lastconnect` = VALUES(`lastconnect`), `online` = VALUES(`online`), "
-		"`reset_cooldown` = VALUES(`reset_cooldown`), `xp_cumulative` = 1;",
+		"`playtime_sec_norm` = VALUES(`playtime_sec_norm`), `playtime_h` = VALUES(`playtime_h`), "
+		"`playtime_m` = VALUES(`playtime_m`), `playtime_s` = VALUES(`playtime_s`), "
+		"`lastconnect_norm` = VALUES(`lastconnect_norm`), `lastconnect_at` = VALUES(`lastconnect_at`), "
+		"`lastconnect` = VALUES(`lastconnect`), `playtime` = VALUES(`playtime_sec_norm`), "
+		"`online` = VALUES(`online`), `reset_cooldown` = VALUES(`reset_cooldown`), `xp_cumulative` = 1;",
 		g_Cfg.tableName, p.steamId, (unsigned long long)p.steam64, DB_Escape(p.name).c_str(),
 		p.st.exp, p.level, p.st.kills, p.st.deaths, p.st.shoots, p.st.hits,
 		p.st.headshots, p.st.assists, p.st.roundWin, p.st.roundLose,
-		(long long)totalPlaytime,
-		(long long)now,
+		(long long)ptNorm.totalSec, (unsigned)ptNorm.hours, (unsigned)ptNorm.minutes, (unsigned)ptNorm.seconds,
+		(long long)now, (long long)now, (long long)now, (long long)ptNorm.totalSec,
 		disconnect ? 0 : g_Cfg.serverId, (long long)p.resetCooldownUntil);
 
 	DB_Query(q);
@@ -734,12 +762,17 @@ static void FinishBootstrap()
 
 	if (g_Cfg.cleanDbDays > 0)
 	{
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `lastconnect` = 0 WHERE `lastconnect` AND `lastconnect` < %lld;",
-			g_Cfg.tableName, (long long)(time(nullptr) - (int64_t)g_Cfg.cleanDbDays * 86400));
+		V_snprintf(q, sizeof(q),
+			"UPDATE `%s` SET `lastconnect` = 0, `lastconnect_norm` = 0, `lastconnect_at` = NULL "
+			"WHERE (`lastconnect_norm` > 0 AND `lastconnect_norm` < %lld) "
+			"OR (`lastconnect` >= 1000000000 AND `lastconnect` < %lld);",
+			g_Cfg.tableName,
+			(long long)(time(nullptr) - (int64_t)g_Cfg.cleanDbDays * 86400),
+			(long long)(time(nullptr) - (int64_t)g_Cfg.cleanDbDays * 86400));
 		DB_Query(q);
 	}
 
-	V_snprintf(q, sizeof(q), "SELECT COUNT(`steam`) FROM `%s` WHERE `lastconnect`;", g_Cfg.tableName);
+	V_snprintf(q, sizeof(q), "SELECT COUNT(`steam`) FROM `%s` WHERE %s;", g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE);
 	DB_Query(q, [](const DBResult& r) {
 		if (r.ok && r.RowCount())
 			g_iDBCountPlayers = r.GetInt(0, 0);
@@ -765,6 +798,7 @@ static void MarkXpAsCumulative()
 		if (!r.ok)
 		{
 			Warning("[LR] Failed to mark XP as cumulative: %s\n", r.error.c_str());
+			FinishBootstrap();
 			return;
 		}
 		LR_Log("cumulative XP marker updated (%llu row(s))", (unsigned long long)r.affected);
@@ -784,6 +818,7 @@ static void EnsureCumulativeXpColumn()
 		if (!r.ok || !r.RowCount())
 		{
 			Warning("[LR] Failed to inspect cumulative XP schema: %s\n", r.error.c_str());
+			FinishBootstrap();
 			return;
 		}
 		if (r.GetInt(0, 0) != 0)
@@ -800,6 +835,7 @@ static void EnsureCumulativeXpColumn()
 			if (!altered.ok)
 			{
 				Warning("[LR] Failed to add cumulative XP marker: %s\n", altered.error.c_str());
+				FinishBootstrap();
 				return;
 			}
 			MarkXpAsCumulative();
@@ -826,8 +862,14 @@ void DB_Bootstrap()
 		"`round_win` int NOT NULL DEFAULT 0, "
 		"`round_lose` int NOT NULL DEFAULT 0, "
 		"`playtime` bigint NOT NULL DEFAULT 0, "
+		"`playtime_sec_norm` bigint unsigned NOT NULL DEFAULT 0, "
+		"`playtime_h` int unsigned NOT NULL DEFAULT 0, "
+		"`playtime_m` tinyint unsigned NOT NULL DEFAULT 0, "
+		"`playtime_s` tinyint unsigned NOT NULL DEFAULT 0, "
 		"`coins` int NOT NULL DEFAULT 0, "
 		"`lastconnect` bigint NOT NULL DEFAULT 0, "
+		"`lastconnect_norm` int unsigned NOT NULL DEFAULT 0, "
+		"`lastconnect_at` datetime NULL DEFAULT NULL, "
 		"`online` int NOT NULL DEFAULT 0, "
 		"`reset_cooldown` bigint NOT NULL DEFAULT 0, "
 		"`xp_cumulative` tinyint unsigned NOT NULL DEFAULT 0, "
@@ -854,6 +896,10 @@ void DB_Bootstrap()
 		V_snprintf(alter, sizeof(alter), "ALTER TABLE `%s` ADD COLUMN `coins` int NOT NULL DEFAULT 0;", g_Cfg.tableName);
 		MigrateColumn("coins", alter);
 
-		EnsureCumulativeXpColumn();
+		DB_EnsureNormalizedTimeColumns(g_Cfg.tableName, [](const DBResult& r) {
+			if (!r.ok)
+				Warning("[LR] normalized time columns migration failed: %s\n", r.error.c_str());
+			EnsureCumulativeXpColumn();
+		});
 	});
 }

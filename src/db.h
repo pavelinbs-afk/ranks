@@ -51,3 +51,30 @@ bool DB_IsConnected();
 
 // utf8/utf8mb4-safe escaping for string literals ('...' contents).
 std::string DB_Escape(const char* in);
+
+/** Total playtime split into h/m/s (playtime in lr_core is always stored as seconds). */
+struct DBPlaytimeNormalized
+{
+	int64_t totalSec = 0;
+	int hours = 0;
+	int minutes = 0;
+	int seconds = 0;
+};
+
+DBPlaytimeNormalized DB_SplitPlaytimeSeconds(int64_t totalSec);
+
+/** Reconstruct total seconds from normalized columns (sec_norm preferred, then h/m/s). */
+int64_t DB_PlaytimeFromNormalized(int64_t secNorm, int h, int m, int s, int64_t legacyPlaytime = 0);
+
+/** SQL fragment: player has ever connected (normalized first, legacy fallback). */
+constexpr const char* LR_SQL_LASTCONNECT_ACTIVE =
+	"(`lastconnect_norm` > 0 OR (`lastconnect` >= 1000000000 AND `lastconnect` <= UNIX_TIMESTAMP() + 86400))";
+
+/** Primary playtime column (total seconds). */
+constexpr const char* LR_COL_PLAYTIME_SEC = "`playtime_sec_norm`";
+
+/**
+ * Adds playtime_sec_norm/h/m/s + lastconnect_norm/at, backfills all rows from legacy
+ * playtime/lastconnect (and playtime_sec if present), then calls onDone on the main thread.
+ */
+void DB_EnsureNormalizedTimeColumns(const char* tableName, DBCallback onDone = nullptr);

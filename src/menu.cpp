@@ -276,8 +276,8 @@ static void FetchPlaceThenShowMain(int iSlot)
 	uint64_t steam64 = p.steam64;
 	char q[512];
 	V_snprintf(q, sizeof(q),
-		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND `lastconnect`);",
-		g_Cfg.tableName, p.level, p.level, p.st.exp);
+		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s);",
+		g_Cfg.tableName, p.level, p.level, p.st.exp, LR_SQL_LASTCONNECT_ACTIVE);
 
 	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
 		if (g_Players[iSlot].steam64 != steam64 || !g_Players[iSlot].loaded || PlayerGeneration(iSlot) != gen)
@@ -484,12 +484,12 @@ static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 	char q[512];
 	if (byTime)
 		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `playtime` FROM `%s` WHERE `lastconnect` ORDER BY `playtime` DESC LIMIT %i;",
-			g_Cfg.tableName, g_Cfg.topCount);
+			"SELECT `name`, `playtime_sec_norm` FROM `%s` WHERE %s ORDER BY `playtime_sec_norm` DESC LIMIT %i;",
+			g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE, g_Cfg.topCount);
 	else
 		V_snprintf(q, sizeof(q),
-			"SELECT `name`, `rank`, `value` FROM `%s` WHERE `lastconnect` ORDER BY `value` DESC, `rank` DESC LIMIT %i;",
-			g_Cfg.tableName, g_Cfg.topCount);
+			"SELECT `name`, `rank`, `value` FROM `%s` WHERE %s ORDER BY `value` DESC, `rank` DESC LIMIT %i;",
+			g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE, g_Cfg.topCount);
 
 	uint64_t steam64 = g_Players[iSlot].steam64;
 	DB_Query(q, [iSlot, steam64, byTime, back, gen = PlayerGeneration(iSlot)](const DBResult& r) {
@@ -504,7 +504,7 @@ static void FetchTopThenShow(int iSlot, bool byTime, MenuScreen back)
 				TopRow row;
 				V_strncpy(row.name, r.Get(i, 0), sizeof(row.name));
 				if (byTime)
-					row.playtimeSec = r.GetInt(i, 1);
+					row.playtimeSec = r.GetInt64(i, 1);
 				else
 				{
 					row.level = r.GetInt(i, 1);

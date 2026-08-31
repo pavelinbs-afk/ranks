@@ -3,11 +3,16 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <thread>
 
 #include <mysql.h>
 #include <errmsg.h>
+
+#include <cstdio>
+#include <cstring>
+#include <ctime>
 
 #include <tier0/dbg.h>
 
@@ -248,6 +253,169 @@ void DB_ProcessCallbacks()
 bool DB_IsConnected()
 {
 	return s_Connected;
+}
+
+DBPlaytimeNormalized DB_SplitPlaytimeSeconds(int64_t totalSec)
+{
+	DBPlaytimeNormalized out;
+	if (totalSec < 0)
+		totalSec = 0;
+	out.totalSec = totalSec;
+	out.hours = (int)(totalSec / 3600);
+	out.minutes = (int)((totalSec / 60) % 60);
+	out.seconds = (int)(totalSec % 60);
+	return out;
+}
+
+int64_t DB_PlaytimeFromNormalized(int64_t secNorm, int h, int m, int s, int64_t legacyPlaytime)
+{
+	if (secNorm > 0)
+		return secNorm;
+
+	int64_t fromParts = (int64_t)h * 3600 + (int64_t)m * 60 + s;
+	if (fromParts > 0)
+		return fromParts;
+
+	if (legacyPlaytime >= 1000000000LL && legacyPlaytime <= (int64_t)time(nullptr) + 86400)
+		return 0;
+
+	return legacyPlaytime > 0 ? legacyPlaytime : 0;
+}
+
+struct NormColumnDef
+{
+	const char* name;
+	const char* alterFmt;
+};
+
+static void EnsureNormColumnThen(const char* tableName, size_t step, DBCallback onDone);
+
+static void EnsureNormColumnThen(const char* tableName, size_t step, DBCallback onDone)
+{
+	static const NormColumnDef kCols[] = {
+		{"playtime_sec_norm",
+			"ALTER TABLE `%s` ADD COLUMN `playtime_sec_norm` bigint unsigned NOT NULL DEFAULT 0 AFTER `playtime`;"},
+		{"playtime_h",
+			"ALTER TABLE `%s` ADD COLUMN `playtime_h` int unsigned NOT NULL DEFAULT 0 AFTER `playtime_sec_norm`;"},
+		{"playtime_m",
+			"ALTER TABLE `%s` ADD COLUMN `playtime_m` tinyint unsigned NOT NULL DEFAULT 0 AFTER `playtime_h`;"},
+		{"playtime_s",
+			"ALTER TABLE `%s` ADD COLUMN `playtime_s` tinyint unsigned NOT NULL DEFAULT 0 AFTER `playtime_m`;"},
+		{"lastconnect_norm",
+			"ALTER TABLE `%s` ADD COLUMN `lastconnect_norm` int unsigned NOT NULL DEFAULT 0 AFTER `lastconnect`;"},
+		{"lastconnect_at",
+			"ALTER TABLE `%s` ADD COLUMN `lastconnect_at` datetime NULL DEFAULT NULL AFTER `lastconnect_norm`;"},
+	};
+
+	const size_t colCount = sizeof(kCols) / sizeof(kCols[0]);
+	if (step >= colCount)
+	{
+		char checkSec[512];
+		snprintf(checkSec, sizeof(checkSec),
+			"SELECT COUNT(*) FROM information_schema.COLUMNS "
+			"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'playtime_sec';",
+			tableName);
+
+		std::string table = tableName;
+		DB_Query(checkSec, [table, onDone](const DBResult& r) {
+			auto runBackfill = [table, onDone]() {
+				char backfill[1536];
+				snprintf(backfill, sizeof(backfill),
+					"UPDATE `%s` SET "
+					"`playtime_sec_norm` = IF(`playtime_sec_norm` > 0, `playtime_sec_norm`, "
+					"IF(`playtime_h` * 3600 + `playtime_m` * 60 + `playtime_s` > 0, "
+					"`playtime_h` * 3600 + `playtime_m` * 60 + `playtime_s`, "
+					"IF(`playtime` >= 1000000000 AND `playtime` <= UNIX_TIMESTAMP() + 86400, 0, GREATEST(`playtime`, 0)))), "
+					"`playtime_h` = FLOOR(`playtime_sec_norm` / 3600), "
+					"`playtime_m` = FLOOR((`playtime_sec_norm` %% 3600) / 60), "
+					"`playtime_s` = (`playtime_sec_norm` %% 60), "
+					"`lastconnect_norm` = IF(`lastconnect_norm` > 0, `lastconnect_norm`, "
+					"IF(`lastconnect` >= 1000000000, `lastconnect`, "
+					"IF(`lastconnect_at` IS NOT NULL, UNIX_TIMESTAMP(`lastconnect_at`), 0))), "
+					"`lastconnect_at` = IF(`lastconnect_norm` > 0, FROM_UNIXTIME(`lastconnect_norm`), NULL), "
+					"`playtime` = `playtime_sec_norm`, "
+					"`lastconnect` = `lastconnect_norm`;",
+					table.c_str());
+
+				DB_Query(backfill, [onDone](const DBResult& br) {
+					if (!br.ok)
+						Warning("[LR] playtime/lastconnect normalization backfill failed: %s\n", br.error.c_str());
+					else if (br.affected)
+						Msg("[LR] playtime/lastconnect normalized (%llu row(s))\n", (unsigned long long)br.affected);
+
+					if (onDone)
+						onDone(br);
+				});
+			};
+
+			if (r.ok && r.RowCount() && r.GetInt(0, 0) > 0)
+			{
+				char copySec[256];
+				snprintf(copySec, sizeof(copySec),
+					"UPDATE `%s` SET `playtime_sec_norm` = `playtime_sec` "
+					"WHERE `playtime_sec_norm` = 0 AND `playtime_sec` > 0;",
+					table.c_str());
+				DB_Query(copySec, [runBackfill](const DBResult& cr) {
+					if (!cr.ok)
+						Warning("[LR] playtime_sec → playtime_sec_norm copy failed: %s\n", cr.error.c_str());
+					runBackfill();
+				});
+				return;
+			}
+
+			runBackfill();
+		});
+		return;
+	}
+
+	char q[512];
+	snprintf(q, sizeof(q),
+		"SELECT COUNT(*) FROM information_schema.COLUMNS "
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = '%s';",
+		tableName, kCols[step].name);
+
+	std::string table = tableName;
+	DB_Query(q, [table, step, onDone](const DBResult& r) {
+		auto next = [table, step, onDone]() { EnsureNormColumnThen(table.c_str(), step + 1, onDone); };
+
+		if (!r.ok || !r.RowCount())
+		{
+			Warning("[LR] Failed to inspect column `%s`: %s\n", kCols[step].name, r.error.c_str());
+			next();
+			return;
+		}
+
+		if (r.GetInt(0, 0) != 0)
+		{
+			next();
+			return;
+		}
+
+		char alter[512];
+		snprintf(alter, sizeof(alter), kCols[step].alterFmt, table.c_str());
+		DB_Query(alter, [step, next](const DBResult& altered) {
+			if (!altered.ok)
+				Warning("[LR] Failed to add column `%s`: %s\n", kCols[step].name, altered.error.c_str());
+			next();
+		});
+	});
+}
+
+void DB_EnsureNormalizedTimeColumns(const char* tableName, DBCallback onDone)
+{
+	if (!tableName || !*tableName)
+	{
+		if (onDone)
+		{
+			DBResult r;
+			r.ok = false;
+			r.error = "empty table name";
+			onDone(r);
+		}
+		return;
+	}
+
+	EnsureNormColumnThen(tableName, 0, std::move(onDone));
 }
 
 std::string DB_Escape(const char* in)
