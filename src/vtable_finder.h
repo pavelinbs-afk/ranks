@@ -1,6 +1,6 @@
 // Locates a C++ virtual table of a class inside a loaded game module by its
-// RTTI records (Linux/ELF). Lets us SourceHook classes like CGameEventManager
-// without per-update signatures.
+// RTTI records (Linux/ELF). Lets us KHook::Virtual::AddGlobal classes like
+// CGameEventManager without per-update signatures.
 #pragma once
 
 #include <cstddef>

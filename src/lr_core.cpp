@@ -42,8 +42,8 @@ DBConfig g_DBConfig;
 
 bool g_bCoreReady = false;
 static bool g_bConfigsOk = false;
-static int g_iEventMgrHookId = 0;
-static int g_iEntSysHookId = 0;
+static void* g_pEventMgrVtbl = nullptr;
+static void* g_pEntSysVtbl = nullptr;
 
 #ifdef _WIN32
 #define SERVER_LIB "server.dll"
@@ -51,18 +51,39 @@ static int g_iEntSysHookId = 0;
 #define SERVER_LIB "/libserver.so"
 #endif
 
-// engine passes this by reference only; sourcehook needs a complete type
+// Engine only passes this by reference; KHook needs a complete type for sizeof.
 class GameSessionConfiguration_t
 {
 };
 
-SH_DECL_HOOK3_void(IServerGameDLL, GameFrame, SH_NOATTRIB, 0, bool, bool, bool);
-SH_DECL_HOOK4_void(IServerGameClients, ClientPutInServer, SH_NOATTRIB, 0, CPlayerSlot, char const*, int, uint64);
-SH_DECL_HOOK5_void(IServerGameClients, ClientDisconnect, SH_NOATTRIB, 0, CPlayerSlot, ENetworkDisconnectionReason, const char*, uint64, const char*);
-SH_DECL_HOOK3_void(ICvar, DispatchConCommand, SH_NOATTRIB, 0, ConCommandRef, const CCommandContext&, const CCommand&);
-SH_DECL_HOOK3_void(INetworkServerService, StartupServer, SH_NOATTRIB, 0, const GameSessionConfiguration_t&, ISource2WorldSession*, const char*);
-SH_DECL_HOOK2(IGameEventManager2, LoadEventsFromFile, SH_NOATTRIB, 0, int, const char*, bool);
-SH_DECL_HOOK2_void(CEntitySystem, Spawn, SH_NOATTRIB, 0, int, const EntitySpawnInfo_t*);
+// Fake object whose first word is a vtable pointer — for KHook::AddGlobal
+// (equivalent to old SourceHook DVPHOOK on an RTTI-found vtable).
+template <typename CLASS, typename RETURN, typename... ARGS>
+static void AddGlobalByVtbl(KHook::Virtual<CLASS, RETURN, ARGS...>& hook, void* vtbl)
+{
+	struct { void* v; } fake{ vtbl };
+	hook.AddGlobal(reinterpret_cast<CLASS*>(&fake));
+}
+
+template <typename CLASS, typename RETURN, typename... ARGS>
+static void RemoveGlobalByVtbl(KHook::Virtual<CLASS, RETURN, ARGS...>& hook, void* vtbl)
+{
+	if (!vtbl)
+		return;
+	struct { void* v; } fake{ vtbl };
+	hook.RemoveGlobal(reinterpret_cast<CLASS*>(&fake));
+}
+
+LRCorePlugin::LRCorePlugin() :
+	m_GameFrame(&ISource2Server::GameFrame, this, nullptr, &LRCorePlugin::Hook_GameFrame),
+	m_ClientPutInServer(&IServerGameClients::ClientPutInServer, this, nullptr, &LRCorePlugin::Hook_ClientPutInServer),
+	m_ClientDisconnect(&IServerGameClients::ClientDisconnect, this, nullptr, &LRCorePlugin::Hook_ClientDisconnect),
+	m_DispatchConCommand(&ICvar::DispatchConCommand, this, &LRCorePlugin::Hook_DispatchConCommand, nullptr),
+	m_StartupServer(&INetworkServerService::StartupServer, this, nullptr, &LRCorePlugin::Hook_StartupServer),
+	m_LoadEventsFromFile(&IGameEventManager2::LoadEventsFromFile, this, &LRCorePlugin::Hook_LoadEventsFromFile, nullptr),
+	m_EntitySystemSpawn(&CEntitySystem::Spawn, this, nullptr, &LRCorePlugin::Hook_EntitySystemSpawn)
+{
+}
 
 void LR_Log(const char* fmt, ...)
 {
@@ -248,37 +269,29 @@ bool LRCorePlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, 
 
 	g_SMAPI->AddListener(this, this);
 
-	SH_ADD_HOOK(IServerGameDLL, GameFrame, g_pServer, SH_MEMBER(this, &LRCorePlugin::Hook_GameFrame), true);
-	SH_ADD_HOOK(IServerGameClients, ClientPutInServer, g_pGameClients, SH_MEMBER(this, &LRCorePlugin::Hook_ClientPutInServer), true);
-	SH_ADD_HOOK(IServerGameClients, ClientDisconnect, g_pGameClients, SH_MEMBER(this, &LRCorePlugin::Hook_ClientDisconnect), true);
-	SH_ADD_HOOK(ICvar, DispatchConCommand, g_pCVar, SH_MEMBER(this, &LRCorePlugin::Hook_DispatchConCommand), false);
-	SH_ADD_HOOK(INetworkServerService, StartupServer, g_pNetServerService, SH_MEMBER(this, &LRCorePlugin::Hook_StartupServer), true);
+	m_GameFrame.Add(g_pServer);
+	m_ClientPutInServer.Add(g_pGameClients);
+	m_ClientDisconnect.Add(g_pGameClients);
+	m_DispatchConCommand.Add(g_pCVar);
+	m_StartupServer.Add(g_pNetServerService);
 
 	// Capture engine singletons without per-update signatures: hook a virtual
 	// through the vtable found by RTTI and grab `this` on the first call.
-	if (void* pEventMgrVtbl = FindVirtualTable(SERVER_LIB, "CGameEventManager"))
-	{
-		g_iEventMgrHookId = SH_ADD_DVPHOOK(IGameEventManager2, LoadEventsFromFile,
-			reinterpret_cast<IGameEventManager2*>(pEventMgrVtbl),
-			SH_MEMBER(this, &LRCorePlugin::Hook_LoadEventsFromFile), false);
-	}
-	else
+	g_pEventMgrVtbl = FindVirtualTable(SERVER_LIB, "CGameEventManager");
+	if (!g_pEventMgrVtbl)
 	{
 		V_strncpy(error, "Failed to locate CGameEventManager vtable", maxlen);
 		return false;
 	}
+	AddGlobalByVtbl(m_LoadEventsFromFile, g_pEventMgrVtbl);
 
-	if (void* pEntSysVtbl = FindVirtualTable(SERVER_LIB, "CGameEntitySystem"))
-	{
-		g_iEntSysHookId = SH_ADD_DVPHOOK(CEntitySystem, Spawn,
-			reinterpret_cast<CEntitySystem*>(pEntSysVtbl),
-			SH_MEMBER(this, &LRCorePlugin::Hook_EntitySystemSpawn), true);
-	}
-	else
+	g_pEntSysVtbl = FindVirtualTable(SERVER_LIB, "CGameEntitySystem");
+	if (!g_pEntSysVtbl)
 	{
 		V_strncpy(error, "Failed to locate CGameEntitySystem vtable", maxlen);
 		return false;
 	}
+	AddGlobalByVtbl(m_EntitySystemSpawn, g_pEntSysVtbl);
 
 	ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
 
@@ -384,15 +397,15 @@ bool LRCorePlugin::Unload(char* error, size_t maxlen)
 
 	Events_Unregister();
 
-	SH_REMOVE_HOOK(IServerGameDLL, GameFrame, g_pServer, SH_MEMBER(this, &LRCorePlugin::Hook_GameFrame), true);
-	SH_REMOVE_HOOK(IServerGameClients, ClientPutInServer, g_pGameClients, SH_MEMBER(this, &LRCorePlugin::Hook_ClientPutInServer), true);
-	SH_REMOVE_HOOK(IServerGameClients, ClientDisconnect, g_pGameClients, SH_MEMBER(this, &LRCorePlugin::Hook_ClientDisconnect), true);
-	SH_REMOVE_HOOK(ICvar, DispatchConCommand, g_pCVar, SH_MEMBER(this, &LRCorePlugin::Hook_DispatchConCommand), false);
-	SH_REMOVE_HOOK(INetworkServerService, StartupServer, g_pNetServerService, SH_MEMBER(this, &LRCorePlugin::Hook_StartupServer), true);
-	if (g_iEventMgrHookId)
-		SH_REMOVE_HOOK_ID(g_iEventMgrHookId);
-	if (g_iEntSysHookId)
-		SH_REMOVE_HOOK_ID(g_iEntSysHookId);
+	m_GameFrame.Remove(g_pServer);
+	m_ClientPutInServer.Remove(g_pGameClients);
+	m_ClientDisconnect.Remove(g_pGameClients);
+	m_DispatchConCommand.Remove(g_pCVar);
+	m_StartupServer.Remove(g_pNetServerService);
+	RemoveGlobalByVtbl(m_LoadEventsFromFile, g_pEventMgrVtbl);
+	RemoveGlobalByVtbl(m_EntitySystemSpawn, g_pEntSysVtbl);
+	g_pEventMgrVtbl = nullptr;
+	g_pEntSysVtbl = nullptr;
 
 	DB_Stop(); // drains queued saves before exiting
 
@@ -417,55 +430,62 @@ void* LRCorePlugin::OnMetamodQuery(const char* iface, int* ret)
 // Hooks
 // ---------------------------------------------------------------------------
 
-void LRCorePlugin::Hook_GameFrame(bool simulating, bool bFirstTick, bool bLastTick)
+KHook::Return<void> LRCorePlugin::Hook_GameFrame(ISource2Server*, bool simulating, bool bFirstTick, bool bLastTick)
 {
 	DB_ProcessCallbacks();
 
-	if (!g_bConfigsOk)
-		return;
-
-	Events_TryRegister();
-	Commands_ProcessQueue();
-	Menu_OnGameFrame();
-	Center_OnGameFrame();
-	TickActivePlaytime();
-	PulseOnlinePresence();
-	GiveTimeExp();
-	Tab_OnGameFrame();
-}
-
-void LRCorePlugin::Hook_ClientPutInServer(CPlayerSlot slot, char const* pszName, int type, uint64 xuid)
-{
-	int iSlot = slot.Get();
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
-		return;
-
-	if (!xuid) // bot
+	if (g_bConfigsOk)
 	{
-		g_Players[iSlot].Reset();
-		return;
+		Events_TryRegister();
+		Commands_ProcessQueue();
+		Menu_OnGameFrame();
+		Center_OnGameFrame();
+		TickActivePlaytime();
+		PulseOnlinePresence();
+		GiveTimeExp();
+		Tab_OnGameFrame();
 	}
 
-	LoadPlayer(iSlot, xuid);
-	if (pszName)
-		V_snprintf(g_Players[iSlot].name, sizeof(g_Players[iSlot].name), "%s", pszName);
-
-	CheckAllowStatistic();
+	return { KHook::Action::Ignore };
 }
 
-void LRCorePlugin::Hook_ClientDisconnect(CPlayerSlot slot, ENetworkDisconnectionReason reason, const char* pszName, uint64 xuid, const char* pszNetworkID)
+KHook::Return<void> LRCorePlugin::Hook_ClientPutInServer(IServerGameClients*, CPlayerSlot slot, char const* pszName, int type, uint64 xuid)
 {
 	int iSlot = slot.Get();
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
-		return;
+	if (iSlot >= 0 && iSlot < LR_MAXPLAYERS)
+	{
+		if (!xuid) // bot
+		{
+			g_Players[iSlot].Reset();
+		}
+		else
+		{
+			LoadPlayer(iSlot, xuid);
+			if (pszName)
+				V_snprintf(g_Players[iSlot].name, sizeof(g_Players[iSlot].name), "%s", pszName);
 
-	ClearPlayerOnlinePresence(iSlot);
-	SavePlayer(iSlot, true);
-	Menu_OnDisconnect(iSlot);
-	Commands_OnDisconnect(iSlot);
+			CheckAllowStatistic();
+		}
+	}
+
+	return { KHook::Action::Ignore };
 }
 
-void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandContext& ctx, const CCommand& args)
+KHook::Return<void> LRCorePlugin::Hook_ClientDisconnect(IServerGameClients*, CPlayerSlot slot, ENetworkDisconnectionReason reason, const char* pszName, uint64 xuid, const char* pszNetworkID)
+{
+	int iSlot = slot.Get();
+	if (iSlot >= 0 && iSlot < LR_MAXPLAYERS)
+	{
+		ClearPlayerOnlinePresence(iSlot);
+		SavePlayer(iSlot, true);
+		Menu_OnDisconnect(iSlot);
+		Commands_OnDisconnect(iSlot);
+	}
+
+	return { KHook::Action::Ignore };
+}
+
+KHook::Return<void> LRCorePlugin::Hook_DispatchConCommand(ICvar*, ConCommandRef cmd, const CCommandContext& ctx, const CCommand& args)
 {
 	int iSlot = ctx.GetPlayerSlot().Get();
 	if (iSlot >= 0 && args.ArgC() > 1)
@@ -484,37 +504,38 @@ void LRCorePlugin::Hook_DispatchConCommand(ConCommandRef cmd, const CCommandCont
 				Commands_QueueChat(iSlot, text);
 
 				if (text[0] == '/')
-					RETURN_META(MRES_SUPERCEDE); // silent command
+					return { KHook::Action::Supersede }; // silent command
 			}
 		}
 	}
-	RETURN_META(MRES_IGNORED);
+	return { KHook::Action::Ignore };
 }
 
-void LRCorePlugin::Hook_StartupServer(const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*)
+KHook::Return<void> LRCorePlugin::Hook_StartupServer(INetworkServerService*, const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*)
 {
 	// Steam/UGC is often ready only after the first map — retry ranks workshop mount.
 	Tab_RegisterWorkshopAddon(/*bFromMapStart=*/true);
 	Events_OnStartupServer();
+	return { KHook::Action::Ignore };
 }
 
-int LRCorePlugin::Hook_LoadEventsFromFile(const char* filename, bool bSearchAll)
+KHook::Return<int> LRCorePlugin::Hook_LoadEventsFromFile(IGameEventManager2* pThis, const char* filename, bool bSearchAll)
 {
-	if (!g_pGameEventManager)
+	if (!g_pGameEventManager && pThis)
 	{
-		g_pGameEventManager = META_IFACEPTR(IGameEventManager2);
+		g_pGameEventManager = pThis;
 		LR_Log("captured game event manager");
 	}
-	RETURN_META_VALUE(MRES_IGNORED, 0);
+	return { KHook::Action::Ignore };
 }
 
-void LRCorePlugin::Hook_EntitySystemSpawn(int nCount, const EntitySpawnInfo_t* pInfo)
+KHook::Return<void> LRCorePlugin::Hook_EntitySystemSpawn(CEntitySystem* pThis, int nCount, const EntitySpawnInfo_t* pInfo)
 {
-	CGameEntitySystem* pSys = reinterpret_cast<CGameEntitySystem*>(META_IFACEPTR(CEntitySystem));
-	if (g_pGameEntitySystem != pSys)
+	CGameEntitySystem* pSys = reinterpret_cast<CGameEntitySystem*>(pThis);
+	if (pSys && g_pGameEntitySystem != pSys)
 	{
 		g_pGameEntitySystem = pSys;
 		LR_Log("captured game entity system");
 	}
-	RETURN_META(MRES_IGNORED);
+	return { KHook::Action::Ignore };
 }
