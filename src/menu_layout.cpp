@@ -612,14 +612,14 @@ static void BuildWasdHud(const WasdSession& ws, char* out, size_t outSize)
 
 	out[0] = '\0';
 	V_snprintf(out, outSize,
-		"<font color='#cccc33'>%s</font><br/>",
+		"<font color='#cccc33'>%s</font><br>\n",
 		ws.title[0] ? ws.title : "Меню");
 
 	size_t used = strlen(out);
 	for (int i = 0; i < ws.infoCount && used + 1 < outSize; i++)
 	{
 		char line[256];
-		V_snprintf(line, sizeof(line), "<font color='#dddddd'>%s</font><br/>", ws.infoLines[i]);
+		V_snprintf(line, sizeof(line), "<font color='#dddddd'>%s</font><br>\n", ws.infoLines[i]);
 		V_strncat(out, line, (int)outSize);
 		used = strlen(out);
 	}
@@ -629,9 +629,9 @@ static void BuildWasdHud(const WasdSession& ws, char* out, size_t outSize)
 		const LRMenuParsedOption& opt = ws.options[i];
 		char line[256];
 		if (i == ws.selected)
-			V_snprintf(line, sizeof(line), "<font color='#88ff88'>&#9654; %s</font><br/>", opt.label);
+			V_snprintf(line, sizeof(line), "<font color='#88ff88'>&#9654; %s</font><br>\n", opt.label);
 		else
-			V_snprintf(line, sizeof(line), "<font color='#aaaaaa'>  %s</font><br/>", opt.label);
+			V_snprintf(line, sizeof(line), "<font color='#aaaaaa'>  %s</font><br>\n", opt.label);
 
 		V_strncat(out, line, (int)outSize);
 		used = strlen(out);

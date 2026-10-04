@@ -95,7 +95,7 @@ static void AppendNavFooter(std::string& html, int currentPage, int totalPages,
 	sepBefore();
 	html += "<font color='#ff8888'>!9</font> <font color='#ffffff'>";
 	html += closeLabel;
-	html += "</font><br/>";
+	html += "</font><br>\n";
 }
 
 static void HtmlEscapeShort(const char* in, char* out, size_t outSize)
@@ -184,14 +184,14 @@ static void AppendTitle(std::string& html, const char* title)
 {
 	html += "<font color='#ffd700'>";
 	html += title;
-	html += "</font><br/>";
+	html += "</font><br>\n";
 }
 
 static void AppendInfoLine(std::string& html, int key, const char* text)
 {
 	char line[512];
 	V_snprintf(line, sizeof(line),
-		"<font color='#aaaaaa'>!%i</font> <font color='#ffffff'>%s</font><br/>",
+		"<font color='#aaaaaa'>!%i</font> <font color='#ffffff'>%s</font><br>\n",
 		key, text);
 	html += line;
 }
@@ -200,7 +200,7 @@ static void AppendActionLine(std::string& html, int key, const char* text)
 {
 	char line[512];
 	V_snprintf(line, sizeof(line),
-		"<font color='#88ff88'>!%i</font> <font color='#88ff88'>%s</font><br/>",
+		"<font color='#88ff88'>!%i</font> <font color='#88ff88'>%s</font><br>\n",
 		key, text);
 	html += line;
 }
@@ -209,7 +209,7 @@ static void AppendGreyLine(std::string& html, int key, const char* text)
 {
 	char line[512];
 	V_snprintf(line, sizeof(line),
-		"<font color='#888888'>!%i</font> <font color='#888888'>%s</font><br/>",
+		"<font color='#888888'>!%i</font> <font color='#888888'>%s</font><br>\n",
 		key, text);
 	html += line;
 }

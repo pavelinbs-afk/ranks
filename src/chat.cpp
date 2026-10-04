@@ -408,7 +408,7 @@ static void WrapCenterHtml(char* out, size_t outSize, const char* body, const ch
 	}
 	std::string prefix = PhraseRaw(prefixKey);
 	ReplaceHtmlColors(prefix);
-	V_snprintf(out, outSize, "%s<br/>%s", prefix.c_str(), body ? body : "");
+	V_snprintf(out, outSize, "%s<br>\n%s", prefix.c_str(), body ? body : "");
 }
 
 void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
@@ -493,10 +493,19 @@ fallback_plain:
 	{
 		if (*src == '<')
 		{
+			const char* tag = src + 1;
+			while (*tag == ' ' || *tag == '\t')
+				tag++;
+			bool isBr = (tag[0] == 'b' || tag[0] == 'B') && (tag[1] == 'r' || tag[1] == 'R');
 			while (*src && *src != '>')
 				src++;
 			if (*src == '>')
 				src++;
+			if (isBr && left > 0)
+			{
+				*dst++ = '\n';
+				left--;
+			}
 			continue;
 		}
 		*dst++ = *src++;
