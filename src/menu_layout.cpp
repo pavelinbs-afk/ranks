@@ -290,25 +290,14 @@ static bool IsDigitChar(char c, int* outDigit)
 	return true;
 }
 
-static bool ExtractOptionLabel(const char* start, char* label, size_t labelSize)
+static bool CopyLabelUntilTag(const char* start, char* label, size_t labelSize)
 {
 	if (!start || !label || labelSize == 0)
 		return false;
 
-	label[0] = '\0';
-
 	const char* p = start;
 	while (*p == ' ' || *p == '\t')
 		p++;
-
-	// lr_core: "<font>!N</font> <font color='...'>Label</font>"
-	if (*p == '<')
-	{
-		const char* gt = strchr(p, '>');
-		if (!gt)
-			return false;
-		p = gt + 1;
-	}
 
 	size_t li = 0;
 	for (; *p && li + 1 < labelSize; p++)
@@ -325,6 +314,29 @@ static bool ExtractOptionLabel(const char* start, char* label, size_t labelSize)
 	return li > 0;
 }
 
+static bool ExtractOptionLabel(const char* start, char* label, size_t labelSize)
+{
+	if (!start || !label || labelSize == 0)
+		return false;
+
+	label[0] = '\0';
+
+	const char* p = start;
+	while (*p == ' ' || *p == '\t')
+		p++;
+
+	// Legacy: "!N</font> <font color='...'>Label</font>"
+	if (*p == '<')
+	{
+		const char* gt = strchr(p, '>');
+		if (!gt)
+			return false;
+		p = gt + 1;
+	}
+
+	return CopyLabelUntilTag(p, label, labelSize);
+}
+
 static bool TryParseOptionAt(const char* hit, int* digit, char* label, size_t labelSize)
 {
 	if (!hit || !digit || !label)
@@ -337,10 +349,27 @@ static bool TryParseOptionAt(const char* hit, int* digit, char* label, size_t la
 	if (*afterDigit == ']')
 		afterDigit++;
 
-	if (strncmp(afterDigit, "</font>", 7) != 0)
-		return false;
+	// Legacy: !N</font> / !N</span> then separate label tag
+	if (strncmp(afterDigit, "</font>", 7) == 0)
+		return ExtractOptionLabel(afterDigit + 7, label, labelSize);
+	if (strncmp(afterDigit, "</span>", 7) == 0)
+		return ExtractOptionLabel(afterDigit + 7, label, labelSize);
 
-	return ExtractOptionLabel(afterDigit + 7, label, labelSize);
+	// <font>/<span>!N Label</...>
+	return CopyLabelUntilTag(afterDigit, label, labelSize);
+}
+
+static bool TagLooksGrey(const char* tag)
+{
+	if (!tag)
+		return false;
+	return strstr(tag, "#aaaaaa") != nullptr
+		|| strstr(tag, "#AAAAAA") != nullptr
+		|| strstr(tag, "#c0c0c0") != nullptr
+		|| strstr(tag, "#C0C0C0") != nullptr
+		|| strstr(tag, "grey") != nullptr
+		|| strstr(tag, "gray") != nullptr
+		|| strstr(tag, "silver") != nullptr;
 }
 
 static bool IsGreyInfoLine(const char* hit, const char* htmlStart)
@@ -348,30 +377,83 @@ static bool IsGreyInfoLine(const char* hit, const char* htmlStart)
 	if (!hit || hit < htmlStart + 2)
 		return false;
 
-	// Цвет только у <font> этого !N, а не у строк выше (иначе !3 «Моя статистика» → info).
+	// Цвет только у тега этого !N, а не у строк выше.
 	const char* closeGt = hit - 1;
 	if (closeGt < htmlStart || *closeGt != '>')
 		return false;
 
-	const char* fontOpen = closeGt;
-	while (fontOpen > htmlStart)
+	const char* tagOpen = closeGt;
+	while (tagOpen > htmlStart)
 	{
-		if (fontOpen[0] == '<' && (fontOpen[1] == 'f' || fontOpen[1] == 'F'))
-			break;
-		fontOpen--;
+		if (tagOpen[0] == '<')
+		{
+			const char c = tagOpen[1];
+			if (c == 'f' || c == 'F' || c == 's' || c == 'S')
+				break;
+		}
+		tagOpen--;
 	}
 
-	if (fontOpen <= htmlStart || fontOpen[0] != '<')
+	if (tagOpen <= htmlStart || tagOpen[0] != '<')
 		return false;
 
-	char tag[96];
-	size_t tagLen = (size_t)(closeGt - fontOpen);
+	char tag[128];
+	size_t tagLen = (size_t)(closeGt - tagOpen);
 	if (tagLen >= sizeof(tag))
 		tagLen = sizeof(tag) - 1;
-	memcpy(tag, fontOpen, tagLen);
+	memcpy(tag, tagOpen, tagLen);
 	tag[tagLen] = '\0';
 
-	return strstr(tag, "#aaaaaa") != nullptr;
+	return TagLooksGrey(tag);
+}
+
+static void ParseColoredPlainLines(const char* html, const char* tagName, WasdSession& ws)
+{
+	if (!html || !tagName)
+		return;
+
+	const size_t tagLen = strlen(tagName);
+	for (const char* p = html; (p = strstr(p, tagName)) != nullptr; )
+	{
+		const char* gt = strchr(p, '>');
+		if (!gt)
+			break;
+
+		char tag[128];
+		size_t len = (size_t)(gt - p);
+		if (len >= sizeof(tag))
+			len = sizeof(tag) - 1;
+		memcpy(tag, p, len);
+		tag[len] = '\0';
+
+		const char* body = gt + 1;
+		if (*body == '!' || *body == '[')
+		{
+			p = body;
+			continue;
+		}
+
+		if (!TagLooksGrey(tag))
+		{
+			p = body;
+			continue;
+		}
+
+		char label[128];
+		if (CopyLabelUntilTag(body, label, sizeof(label))
+			&& ws.infoCount < (int)(sizeof(ws.infoLines) / sizeof(ws.infoLines[0])))
+		{
+			V_strncpy(ws.infoLines[ws.infoCount++], label, sizeof(ws.infoLines[0]));
+		}
+		(void)tagLen;
+		p = body;
+	}
+}
+
+static void ParsePlainInfoLines(const char* html, WasdSession& ws)
+{
+	ParseColoredPlainLines(html, "<font", ws);
+	ParseColoredPlainLines(html, "<span", ws);
 }
 
 static void ParseWasdMenuContent(const char* html, WasdSession& ws)
@@ -380,6 +462,8 @@ static void ParseWasdMenuContent(const char* html, WasdSession& ws)
 	ws.infoCount = 0;
 	if (!html)
 		return;
+
+	ParsePlainInfoLines(html, ws);
 
 	bool seen[10] = {};
 
@@ -492,11 +576,13 @@ bool MenuLayout_ExtractTitle(const char* html, char* out, size_t outSize)
 	if (!html)
 		return false;
 
-	const char* font = strstr(html, "<font");
-	if (!font)
+	const char* tag = strstr(html, "<font");
+	if (!tag)
+		tag = strstr(html, "<span color=");
+	if (!tag)
 		return false;
 
-	const char* gt = strchr(font, '>');
+	const char* gt = strchr(tag, '>');
 	if (!gt)
 		return false;
 
@@ -529,6 +615,11 @@ void MenuLayout_ShowChatMenu(int iSlot, const char* html)
 		V_strncpy(title, "Меню", sizeof(title));
 
 	LRPrint(iSlot, "%s", title);
+
+	WasdSession tmp{};
+	ParsePlainInfoLines(html, tmp);
+	for (int i = 0; i < tmp.infoCount; i++)
+		LRPrint(iSlot, "%s", tmp.infoLines[i]);
 
 	LRMenuParsedOption opts[16];
 	int n = MenuLayout_ParseOptions(html, opts, 16);
@@ -612,14 +703,15 @@ static void BuildWasdHud(const WasdSession& ws, char* out, size_t outSize)
 
 	out[0] = '\0';
 	V_snprintf(out, outSize,
-		"<font color='#cccc33'>%s</font><br>\n",
+		"<font class='fontSize-l' color='yellow'>%s</font><br>",
 		ws.title[0] ? ws.title : "Меню");
 
 	size_t used = strlen(out);
 	for (int i = 0; i < ws.infoCount && used + 1 < outSize; i++)
 	{
 		char line[256];
-		V_snprintf(line, sizeof(line), "<font color='#dddddd'>%s</font><br>\n", ws.infoLines[i]);
+		V_snprintf(line, sizeof(line),
+			"<font class='fontSize-l' color='silver'>%s</font><br>", ws.infoLines[i]);
 		V_strncat(out, line, (int)outSize);
 		used = strlen(out);
 	}
@@ -629,15 +721,19 @@ static void BuildWasdHud(const WasdSession& ws, char* out, size_t outSize)
 		const LRMenuParsedOption& opt = ws.options[i];
 		char line[256];
 		if (i == ws.selected)
-			V_snprintf(line, sizeof(line), "<font color='#88ff88'>&#9654; %s</font><br>\n", opt.label);
+			V_snprintf(line, sizeof(line),
+				"<font class='fontSize-l' color='lime'>&#9654; %s</font><br>", opt.label);
 		else
-			V_snprintf(line, sizeof(line), "<font color='#aaaaaa'>  %s</font><br>\n", opt.label);
+			V_snprintf(line, sizeof(line),
+				"<font class='fontSize-l' color='silver'>  %s</font><br>", opt.label);
 
 		V_strncat(out, line, (int)outSize);
 		used = strlen(out);
 	}
 
-	V_strncat(out, "<font color='#888888'>[W/S] листать · [E] выбрать · [R] выход</font>", (int)outSize);
+	V_strncat(out,
+		"<font class='fontSize-l' color='silver'>[W/S] листать · [E] выбрать · [R] выход</font>",
+		(int)outSize);
 }
 
 static void RefreshWasdHud(int iSlot, WasdSession& ws)

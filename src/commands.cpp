@@ -53,6 +53,15 @@ static void CmdRank(int iSlot)
 			p.posTop = r.GetInt(0, 0);
 
 		float kd = p.st.kills / (p.st.deaths ? float(p.st.deaths) : 1.0f);
+		// Chat color bytes (phrases already resolve {TOKEN} at load time).
+		char kdColor = '\x07'; // RED
+		if (kd > 2.0f)
+			kdColor = '\x04'; // GREEN
+		else if (kd >= 1.0f)
+			kdColor = '\x09'; // YELLOW
+
+		char kdStr[32];
+		V_snprintf(kdStr, sizeof(kdStr), "%c%.2f%c", kdColor, kd, '\x01');
 
 		if (g_Cfg.showRankMessage)
 		{
@@ -60,13 +69,13 @@ static void CmdRank(int iSlot)
 			{
 				if (g_Players[i].loaded)
 					LRPrintPhrase(i, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-						p.st.exp, p.st.kills, p.st.deaths, kd);
+						p.st.exp, p.st.kills, p.st.deaths, kdStr);
 			}
 		}
 		else
 		{
 			LRPrintPhrase(iSlot, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-				p.st.exp, p.st.kills, p.st.deaths, kd);
+				p.st.exp, p.st.kills, p.st.deaths, kdStr);
 		}
 	});
 }
@@ -123,17 +132,18 @@ static bool RunChatCommand(int iSlot, const char* text)
 	char cmd[32];
 	ParseCmdWord(text, cmd, sizeof(cmd));
 
+	// Rank menus live in C++ (LRCenterHtml). VIP must not intercept these chat cmds.
 	if (!V_stricmp(cmd, "rank") || !V_stricmp(cmd, "ранг"))
 		CmdRank(iSlot);
 	else if (!V_stricmp(cmd, "lvl") || !V_stricmp(cmd, "level") || !V_stricmp(cmd, "лвл"))
 		CmdLevel(iSlot);
-	else if (!V_stricmp(cmd, "top"))
-		CmdTop(iSlot, false);
-	else if (!V_stricmp(cmd, "toptime"))
-		CmdTop(iSlot, true);
-	else if (!V_stricmp(cmd, "session"))
+	else if (!V_stricmp(cmd, "session") || !V_stricmp(cmd, "сессия"))
 		CmdSession(iSlot);
-	else if (!V_stricmp(cmd, "resetstats"))
+	else if (!V_stricmp(cmd, "top") || !V_stricmp(cmd, "топ"))
+		CmdTop(iSlot, false);
+	else if (!V_stricmp(cmd, "toptime") || !V_stricmp(cmd, "топактив"))
+		CmdTop(iSlot, true);
+	else if (!V_stricmp(cmd, "resetstats") || !V_stricmp(cmd, "сбросстаты"))
 		CmdResetStats(iSlot);
 	else
 		return false;
@@ -154,8 +164,12 @@ bool Commands_IsChatCommand(int iSlot, const char* text)
 	ParseCmdWord(text, cmd, sizeof(cmd));
 
 	static const char* known[] = {
-		"rank", "ранг", "lvl", "level", "лвл",
-		"top", "toptime", "session", "resetstats",
+		"rank", "ранг",
+		"lvl", "level", "лвл",
+		"session", "сессия",
+		"top", "топ",
+		"toptime", "топактив",
+		"resetstats", "сбросстаты",
 	};
 	for (const char* k : known)
 	{

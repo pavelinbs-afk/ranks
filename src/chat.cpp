@@ -17,8 +17,9 @@
 #define HUD_DEST_CHAT   3
 #define HUD_DEST_CENTER 4
 
-// Как AdminPlugin / CounterStrikeSharp PrintToCenterHtml.
-static constexpr int   kCenterHudChunkMs     = 20000;
+// Как AdminPlugin / CounterStrikeSharp PrintToCenterHtml:
+// duration в show_survival_respawn_status — секунды (не мс).
+static constexpr int   kCenterHudChunkSec    = 20;
 static constexpr float kCenterHudRefreshSec  = 0.02f;
 
 #ifdef _WIN32
@@ -162,7 +163,7 @@ static const PhraseSpec s_Specs[] = {
 	{"LevelUpAll",      "si"},       // player name, new level
 	{"LevelDownAll",    "si"},       // player name, new level
 
-	{"RankPlayer",      "siiiiif"},  // name, pos, total, exp, kills, deaths, kd
+	{"RankPlayer",      "siiiiis"},  // name, pos, total, exp, kills, deaths, kdColored
 	{"MyLevel",         "siis"},     // rank name, level, level count, exp text
 	{"SessionStats",    "ssiiifs"},  // time, exp, kills, deaths, hs, kd, pos
 
@@ -408,7 +409,7 @@ static void WrapCenterHtml(char* out, size_t outSize, const char* body, const ch
 	}
 	std::string prefix = PhraseRaw(prefixKey);
 	ReplaceHtmlColors(prefix);
-	V_snprintf(out, outSize, "%s<br>\n%s", prefix.c_str(), body ? body : "");
+	V_snprintf(out, outSize, "%s<br>%s", prefix.c_str(), body ? body : "");
 }
 
 void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* prefixKey)
@@ -421,10 +422,13 @@ void LRWrapCenterHtml(char* out, size_t outSize, const char* body, const char* p
 	WrapCenterHtml(out, outSize, body ? body : "", prefixKey);
 }
 
-static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenterHudChunkMs)
+static void FireCenterHtml(int iSlot, const char* html, int durationSec = kCenterHudChunkSec)
 {
 	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
 		return;
+
+	if (durationSec < 1)
+		durationSec = 1;
 
 	EnsureLegacyGameEventListener();
 
@@ -439,7 +443,7 @@ static void FireCenterHtml(int iSlot, const char* html, int durationMs = kCenter
 			goto fallback_plain;
 
 		ev->SetString("loc_token", html ? html : "");
-		ev->SetInt("duration", durationMs);
+		ev->SetInt("duration", durationSec);
 
 		if (CEntityInstance* pController = GetControllerBySlot(iSlot))
 			ev->SetPlayer("userid", pController);
@@ -570,13 +574,13 @@ void LRCenterHtml(int iSlot, const char* html, float durationSec)
 	if (!html || !*html)
 		return;
 
-	int durationMs = (int)(durationSec * 1000.0f);
-	if (durationMs < 1)
-		durationMs = 1;
-	if (durationMs > kCenterHudChunkMs)
-		durationMs = kCenterHudChunkMs;
+	int duration = (int)(durationSec + 0.5f);
+	if (duration < 1)
+		duration = 1;
+	if (duration > kCenterHudChunkSec)
+		duration = kCenterHudChunkSec;
 
-	FireCenterHtml(iSlot, html, durationMs);
+	FireCenterHtml(iSlot, html, duration);
 
 	if (durationSec <= 0.0f)
 		return;

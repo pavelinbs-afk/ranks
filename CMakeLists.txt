@@ -275,6 +275,7 @@ set(LR_CORE_PLUGIN_SRCS
   src/commands.cpp
   src/menu.cpp
   src/menu_layout.cpp
+  src/css_bridge.cpp
 )
 
 set(LR_CORE_SDK_SRCS

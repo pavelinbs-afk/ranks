@@ -1,4 +1,4 @@
-﻿#include "lr_core.h"
+#include "lr_core.h"
 
 #include <map>
 #include <vector>
@@ -10,6 +10,7 @@
 #include "chat.h"
 #include "commands.h"
 #include "config.h"
+#include "css_bridge.h"
 #include "db.h"
 #include "events.h"
 #include "imultiaddonmanager.h"
@@ -17,6 +18,8 @@
 #include "menu.h"
 #include "tab.h"
 #include "vtable_finder.h"
+
+#include <lr_css_api.h>
 
 LRCorePlugin g_LRPlugin;
 PLUGIN_EXPOSE(LRCorePlugin, g_LRPlugin);
@@ -294,6 +297,7 @@ bool LRCorePlugin::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, 
 	AddGlobalByVtbl(m_EntitySystemSpawn, g_pEntSysVtbl);
 
 	ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
+	CssBridge_RegisterCommands();
 
 	return true;
 }
@@ -421,6 +425,12 @@ void* LRCorePlugin::OnMetamodQuery(const char* iface, int* ret)
 			*ret = META_IFACE_OK;
 		return &g_Api;
 	}
+	if (!strcmp(iface, LRCORE_CSS_INTERFACE))
+	{
+		if (ret)
+			*ret = META_IFACE_OK;
+		return CssBridge_GetApiTable();
+	}
 	if (ret)
 		*ret = META_IFACE_FAILED;
 	return nullptr;
@@ -440,6 +450,7 @@ KHook::Return<void> LRCorePlugin::Hook_GameFrame(ISource2Server*, bool simulatin
 		Commands_ProcessQueue();
 		Menu_OnGameFrame();
 		Center_OnGameFrame();
+		CssBridge_OnGameFrame();
 		TickActivePlaytime();
 		PulseOnlinePresence();
 		GiveTimeExp();

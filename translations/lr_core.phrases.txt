@@ -167,7 +167,7 @@
 	}
 	"LevelUp"
 	{
-		"ru"	"Поздравляем! Вы подняли {GOLD}%i{DEFAULT} ранг"
+		"ru"	"Поздравляем! Вы достигли {GOLD}%i{DEFAULT} ранг"
 		"en"	"Congratulations! You reached rank {GOLD}%i{DEFAULT}"
 	}
 	"LevelDown"
@@ -177,7 +177,7 @@
 	}
 	"LevelUpAll"
 	{
-		"ru"	"Игрок {GREEN}%s{DEFAULT} поднял {GOLD}%i{DEFAULT} ранг"
+		"ru"	"Игрок {GREEN}%s{DEFAULT} достиг {GOLD}%i{DEFAULT} ранг"
 		"en"	"Player {GREEN}%s{DEFAULT} reached rank {GOLD}%i{DEFAULT}"
 	}
 	"LevelDownAll"
@@ -187,8 +187,8 @@
 	}
 	"RankPlayer"
 	{
-		"ru"	"Игрок {GREEN}%s{DEFAULT} | Место: {GOLD}%i{DEFAULT}/%i | Опыт: {LIME}%i{DEFAULT} | Убийств: %i | Смертей: %i | K/D: %.2f"
-		"en"	"Player {GREEN}%s{DEFAULT} | Rank: {GOLD}%i{DEFAULT}/%i | Exp: {LIME}%i{DEFAULT} | Kills: %i | Deaths: %i | K/D: %.2f"
+		"ru"	"Игрок: {YELLOW}%s {GREY}| {DEFAULT}Место: {YELLOW}%i{GREY}/{RED}%i {GREY}| {DEFAULT}Опыт: {YELLOW}%i {GREY}| {DEFAULT}Убийств: {YELLOW}%i {GREY}| {DEFAULT}Смертей: {YELLOW}%i {GREY}| {DEFAULT}K/D: %s"
+		"en"	"Player: {YELLOW}%s {GREY}| {DEFAULT}Rank: {YELLOW}%i{GREY}/{RED}%i {GREY}| {DEFAULT}Exp: {YELLOW}%i {GREY}| {DEFAULT}Kills: {YELLOW}%i {GREY}| {DEFAULT}Deaths: {YELLOW}%i {GREY}| {DEFAULT}K/D: %s"
 	}
 	"MyLevel"
 	{

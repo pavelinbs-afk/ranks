@@ -35,7 +35,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.7.1"; }
+	const char* GetVersion() override		{ return "2.7.4"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 

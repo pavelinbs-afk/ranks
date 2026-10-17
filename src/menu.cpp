@@ -45,7 +45,7 @@ static MenuState s_Menu[LR_MAXPLAYERS];
 
 static const float kMenuDuration = 120.0f;
 static const float kMenuRefresh = 0.02f;
-// Центральный HUD CS2: prefix + заголовок + до 4 пунктов + nav = ~7 строк.
+// Center HUD: title + 4 items + nav (5 items clips title/footer).
 static const int kListItemsPerPage = 4;
 static const int kMyStatsPages = 2;
 
@@ -67,35 +67,57 @@ static int TotalPages(int itemCount, int perPage)
 	return (itemCount + perPage - 1) / perPage;
 }
 
-// Footer как BuildCenterMenuNavFooterHtml в AdminPlugin.
+// Same hex + fontSize-m as VIP CenterHtml menus (named colors → plain white on current CS2).
+static constexpr const char* kColTitle  = "#cccc33";
+static constexpr const char* kColAction = "#88ff88";
+static constexpr const char* kColInfo   = "#aaaaaa";
+static constexpr const char* kColWhite  = "#ffffff";
+static constexpr const char* kColNav    = "#cccc33";
+static constexpr const char* kColClose  = "#ff8888";
+
+static void AppendFont(std::string& html, const char* color, const char* text)
+{
+	html += "<font color='";
+	html += color;
+	html += "' class='fontSize-m'>";
+	html += text;
+	html += "</font>";
+}
+
+// Навигация в одну строку: !7 | !8 | !9
 static void AppendNavFooter(std::string& html, int currentPage, int totalPages,
 	bool showBack, bool hideBackOnFirstPage = false, const char* closeLabel = "Закрыть")
 {
-	const char* sep = " <font color='#555555'>|</font> ";
 	bool first = true;
 
 	auto sepBefore = [&]() {
 		if (!first)
-			html += sep;
+		{
+			html += " ";
+			AppendFont(html, kColInfo, "|");
+			html += " ";
+		}
 		first = false;
 	};
 
 	if (showBack && (!hideBackOnFirstPage || currentPage > 0))
 	{
 		sepBefore();
-		html += "<font color='#8888ff'>!7</font> <font color='#ffffff'>Назад</font>";
+		AppendFont(html, kColNav, "!7 Назад");
 	}
 
 	if (totalPages > 1 && currentPage + 1 < totalPages)
 	{
 		sepBefore();
-		html += "<font color='#88ccff'>!8</font> <font color='#ffffff'>Вперёд</font>";
+		AppendFont(html, kColNav, "!8 Вперёд");
 	}
 
 	sepBefore();
-	html += "<font color='#ff8888'>!9</font> <font color='#ffffff'>";
+	html += "<font color='";
+	html += kColClose;
+	html += "' class='fontSize-m'>!9 ";
 	html += closeLabel;
-	html += "</font><br>\n";
+	html += "</font>";
 }
 
 static void HtmlEscapeShort(const char* in, char* out, size_t outSize)
@@ -182,36 +204,43 @@ static void MenuShow(int iSlot, const char* html)
 
 static void AppendTitle(std::string& html, const char* title)
 {
-	html += "<font color='#ffd700'>";
-	html += title;
-	html += "</font><br>\n";
+	AppendFont(html, kColTitle, title);
+	html += "<br>";
+}
+
+// Одна <font>-строка + <br>. Без '\n'.
+static void AppendPlainLine(std::string& html, const char* color, const char* text)
+{
+	AppendFont(html, color, text);
+	html += "<br>";
+}
+
+static void AppendKeyLine(std::string& html, const char* color, int key, const char* text)
+{
+	char line[512];
+	V_snprintf(line, sizeof(line), "!%i %s", key, text);
+	AppendFont(html, color, line);
+	html += "<br>";
 }
 
 static void AppendInfoLine(std::string& html, int key, const char* text)
 {
-	char line[512];
-	V_snprintf(line, sizeof(line),
-		"<font color='#aaaaaa'>!%i</font> <font color='#ffffff'>%s</font><br>\n",
-		key, text);
-	html += line;
+	AppendKeyLine(html, kColInfo, key, text);
 }
 
 static void AppendActionLine(std::string& html, int key, const char* text)
 {
-	char line[512];
-	V_snprintf(line, sizeof(line),
-		"<font color='#88ff88'>!%i</font> <font color='#88ff88'>%s</font><br>\n",
-		key, text);
-	html += line;
+	AppendKeyLine(html, kColAction, key, text);
 }
 
 static void AppendGreyLine(std::string& html, int key, const char* text)
 {
-	char line[512];
-	V_snprintf(line, sizeof(line),
-		"<font color='#888888'>!%i</font> <font color='#888888'>%s</font><br>\n",
-		key, text);
-	html += line;
+	AppendKeyLine(html, kColInfo, key, text);
+}
+
+static void AppendWhiteLine(std::string& html, int key, const char* text)
+{
+	AppendKeyLine(html, kColWhite, key, text);
 }
 
 static void ShowMainMenu(int iSlot)
@@ -230,27 +259,30 @@ static void ShowMainMenu(int iSlot)
 	MenuState& m = s_Menu[iSlot];
 	m.page = 0;
 
-	char line1[128], line2[128];
+	char stats[128];
 	if (pl.level < rankCount)
-		V_snprintf(line1, sizeof(line1), "Звание: Уровень %i | Опыт: %i / %i",
-			pl.level, pl.st.exp, ExpForNextLevel(pl.level));
+		V_snprintf(stats, sizeof(stats), "Ур. %i | %i/%i | #%i/%i",
+			pl.level, pl.st.exp, ExpForNextLevel(pl.level),
+			pl.posTop, g_iDBCountPlayers);
 	else
-		V_snprintf(line1, sizeof(line1), "Звание: Уровень %i | Опыт: %i",
-			pl.level, pl.st.exp);
-
-	V_snprintf(line2, sizeof(line2), "Место: %i / %i",
-		pl.posTop, g_iDBCountPlayers);
+		V_snprintf(stats, sizeof(stats), "Ур. %i | %i | #%i/%i",
+			pl.level, pl.st.exp, pl.posTop, g_iDBCountPlayers);
 
 	std::string html;
 	AppendTitle(html, "Меню рангов");
-
-	AppendInfoLine(html, 1, line1);
-	AppendInfoLine(html, 2, line2);
-	AppendActionLine(html, 3, "Моя статистика");
-	AppendActionLine(html, 4, "TOP 10");
-	AppendActionLine(html, 5, "Все ранги");
-
-	AppendNavFooter(html, 0, 1, false, false, "Выход");
+	AppendPlainLine(html, kColInfo, stats);
+	AppendActionLine(html, 1, "Моя статистика");
+	AppendActionLine(html, 2, "TOP 10");
+	// !3 и !9 на одной строке — иначе 6-я строка HUD часто обрезается.
+	{
+		char line[128];
+		V_snprintf(line, sizeof(line), "!3 Все ранги");
+		AppendFont(html, kColAction, line);
+		html += " ";
+		AppendFont(html, kColInfo, "|");
+		html += " ";
+		AppendFont(html, kColClose, "!9 Выход");
+	}
 
 	m.screen = MenuScreen::Main;
 	m.backScreen = MenuScreen::None;
@@ -310,17 +342,14 @@ static void ShowMyStatsMenu(int iSlot, MenuScreen back)
 		char timeStr[64];
 		FormatPlaytimeLong(TotalPlaytime(iSlot), timeStr, sizeof(timeStr));
 
-		char l2[128], l3[128], l4[128], l5[128];
+		char l2[160], l3[128];
 		V_snprintf(l2, sizeof(l2), "Сыграно: %s", timeStr);
-		V_snprintf(l3, sizeof(l3), "Убийств: %i", p.st.kills);
-		V_snprintf(l4, sizeof(l4), "Смертей: %i", p.st.deaths);
-		V_snprintf(l5, sizeof(l5), "Ассистов: %i", p.st.assists);
+		V_snprintf(l3, sizeof(l3), "K: %i | D: %i | A: %i",
+			p.st.kills, p.st.deaths, p.st.assists);
 
 		AppendActionLine(html, 1, "Данные за сессию");
 		AppendInfoLine(html, 2, l2);
 		AppendInfoLine(html, 3, l3);
-		AppendInfoLine(html, 4, l4);
-		AppendInfoLine(html, 5, l5);
 		AppendNavFooter(html, page, kMyStatsPages, back != MenuScreen::None, false, "Выход");
 	}
 	else
@@ -331,14 +360,12 @@ static void ShowMyStatsMenu(int iSlot, MenuScreen back)
 		int rounds = p.st.roundWin + p.st.roundLose;
 		int wrPct = rounds ? (p.st.roundWin * 100 / rounds) : 0;
 
-		char l1[128], l2[64], l3[96], l4[64];
-		V_snprintf(l1, sizeof(l1), "Хедшотов: %i (%i%%)", p.st.headshots, hsPct);
-		V_snprintf(l2, sizeof(l2), "KDR: %.2f", kd);
-		V_snprintf(l3, sizeof(l3), "Точность: %i%% | WR: %i%%", accPct, wrPct);
+		char l1[128], l2[96];
+		V_snprintf(l1, sizeof(l1), "HS: %i (%i%%) | KDR: %.2f", p.st.headshots, hsPct, kd);
+		V_snprintf(l2, sizeof(l2), "Точность: %i%% | WR: %i%%", accPct, wrPct);
 
 		AppendInfoLine(html, 1, l1);
 		AppendInfoLine(html, 2, l2);
-		AppendInfoLine(html, 3, l3);
 		if (g_Cfg.showResetStats)
 			AppendActionLine(html, 4, "Сбросить статистику");
 		AppendNavFooter(html, page, kMyStatsPages, true, false, "Выход");
@@ -364,23 +391,16 @@ static void ShowSessionMenu(int iSlot, MenuScreen back)
 	FormatDuration(SessionTime(iSlot), timeStr, sizeof(timeStr));
 	V_snprintf(kdStr, sizeof(kdStr), "%.2f", StatKD(p.sess.kills, p.sess.deaths));
 
-	char l1[128], l2[160], l3[128], l4[128], l5[128];
-	V_snprintf(l1, sizeof(l1), "Время: %s", timeStr);
-	V_snprintf(l2, sizeof(l2), "Опыт: %s | Место: %s | K/D: %s", expStr, posStr, kdStr);
-	V_snprintf(l3, sizeof(l3), "Убийств: %i", p.sess.kills);
-	V_snprintf(l4, sizeof(l4), "Смертей: %i", p.sess.deaths);
-	V_snprintf(l5, sizeof(l5), "Хедшотов: %i", p.sess.headshots);
+	char l1[160], l2[160], l3[128];
+	V_snprintf(l1, sizeof(l1), "Время: %s | Exp: %s | #%s", timeStr, expStr, posStr);
+	V_snprintf(l2, sizeof(l2), "K/D: %s | K: %i | D: %i", kdStr, p.sess.kills, p.sess.deaths);
+	V_snprintf(l3, sizeof(l3), "Хедшотов: %i", p.sess.headshots);
 
 	std::string html;
-	if (back == MenuScreen::MyStats)
-		AppendTitle(html, "Данные за сессию");
-	else
-		AppendTitle(html, "Меню рангов | Данные за сессию");
+	AppendTitle(html, back == MenuScreen::MyStats ? "Сессия" : "Данные за сессию");
 	AppendInfoLine(html, 1, l1);
 	AppendInfoLine(html, 2, l2);
 	AppendInfoLine(html, 3, l3);
-	AppendInfoLine(html, 4, l4);
-	AppendInfoLine(html, 5, l5);
 	AppendNavFooterSimple(html, back != MenuScreen::None, "Выход");
 
 	s_Menu[iSlot].screen = MenuScreen::Session;
@@ -419,10 +439,11 @@ static void ShowAllRanksMenu(int iSlot)
 		else
 			V_snprintf(line, sizeof(line), "[%i] Уровень %i", g_Cfg.ranksExp[idx], level);
 
+		// Достигнутый — светло-серый, ещё не взятый — белый.
 		if (achieved)
 			AppendGreyLine(html, i + 1, line);
 		else
-			AppendInfoLine(html, i + 1, line);
+			AppendWhiteLine(html, i + 1, line);
 	}
 
 	AppendNavFooter(html, page, totalPages, true, false, "Выход");
@@ -443,9 +464,9 @@ static void ShowTopMenu(int iSlot)
 
 	std::string html;
 	if (byTime)
-		AppendTitle(html, "Меню рангов | TOP 10 | по активности");
+		AppendTitle(html, "TOP 10 | активность");
 	else
-		AppendTitle(html, "TOP 10 | по очкам опыта");
+		AppendTitle(html, "TOP 10 | опыт");
 
 	for (int i = 0; i < kListItemsPerPage; i++)
 	{
@@ -457,17 +478,18 @@ static void ShowTopMenu(int iSlot)
 		char safeName[128];
 		HtmlEscapeShort(row.name, safeName, sizeof(safeName));
 
+		// AppendInfoLine prefixes !1..!4 (page keys); place is #N in the body.
 		char line[512];
 		if (byTime)
 		{
 			char timeStr[32];
 			FormatDuration(row.playtimeSec, timeStr, sizeof(timeStr));
-			V_snprintf(line, sizeof(line), "%i — %s — %s",
+			V_snprintf(line, sizeof(line), "#%i — %s — %s",
 				idx + 1, timeStr, safeName);
 		}
 		else
 		{
-			V_snprintf(line, sizeof(line), "%i — %i — %s",
+			V_snprintf(line, sizeof(line), "#%i — %i — %s",
 				idx + 1, row.exp, safeName);
 		}
 		AppendInfoLine(html, i + 1, line);
@@ -670,14 +692,14 @@ bool Menu_TryHandleKey(int iSlot, int key)
 	switch (m.screen)
 	{
 		case MenuScreen::Main:
-			if (key == 3)
+			if (key == 1)
 			{
 				m.page = 0;
 				ShowMyStatsMenu(iSlot, MenuScreen::Main);
 			}
-			else if (key == 4)
+			else if (key == 2)
 				FetchTopThenShow(iSlot, false, MenuScreen::Main);
-			else if (key == 5)
+			else if (key == 3)
 			{
 				m.page = 0;
 				ShowAllRanksMenu(iSlot);
