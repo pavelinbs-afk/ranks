@@ -1,279 +1,10 @@
 #include "lr_core.h"
 #include "config.h"
-#include "chat.h"
 
 #include <KeyValues.h>
 #include <filesystem.h>
 
-static const char* SETTINGS_PATH = "addons/lr_core/configs/settings.ini";
-static const char* TAB_PATH      = "addons/lr_core/configs/tab.ini";
-static const char* DB_PATH       = "addons/lr_core/configs/database.ini";
-
-static void LoadExpSection(KeyValues* kv)
-{
-	g_Cfg.expHeadshot      = kv->GetInt("lr_headshot", 0);
-	g_Cfg.expAssist        = kv->GetInt("lr_assist", 0);
-	g_Cfg.expSuicide       = kv->GetInt("lr_suicide", 0);
-	g_Cfg.expTeamkill      = kv->GetInt("lr_teamkill", 0);
-	g_Cfg.expRoundWin      = kv->GetInt("lr_winround", 8);
-	g_Cfg.expRoundLose     = kv->GetInt("lr_loseround", 8);
-	g_Cfg.expMvp           = kv->GetInt("lr_mvpround", 0);
-	g_Cfg.expBombPlant     = kv->GetInt("lr_bombplanted", 0);
-	g_Cfg.expBombDefuse    = kv->GetInt("lr_bombdefused", 0);
-	g_Cfg.expBombDrop      = kv->GetInt("lr_bombdropped", 0);
-	g_Cfg.expBombPickup    = kv->GetInt("lr_bombpickup", 0);
-	g_Cfg.expHostageKill   = kv->GetInt("lr_hostagekilled", 0);
-	g_Cfg.expHostageRescue = kv->GetInt("lr_hostagerescued", 0);
-}
-
-static void LoadRewardPair(KeyValues* parent, const char* key, int& expOut, int& coinsOut)
-{
-	KeyValues* r = parent ? parent->FindKey(key, false) : nullptr;
-	if (!r)
-		return;
-	expOut = r->GetInt("exp", expOut);
-	coinsOut = r->GetInt("coins", coinsOut);
-}
-
-static void LoadRewardsSection(KeyValues* rewards)
-{
-	if (!rewards)
-		return;
-
-	int dummy = 0;
-	LoadRewardPair(rewards, "kill", g_Cfg.expKill, dummy);
-	LoadRewardPair(rewards, "kill_bot", g_Cfg.expKillBot, dummy);
-	LoadRewardPair(rewards, "death", g_Cfg.expDeath, dummy);
-	LoadRewardPair(rewards, "death_bot", g_Cfg.expDeathBot, dummy);
-	LoadRewardPair(rewards, "headshot", g_Cfg.expHeadshot, dummy);
-	LoadRewardPair(rewards, "assist", g_Cfg.expAssist, dummy);
-	LoadRewardPair(rewards, "suicide", g_Cfg.expSuicide, dummy);
-	LoadRewardPair(rewards, "teamkill", g_Cfg.expTeamkill, dummy);
-	LoadRewardPair(rewards, "round_win", g_Cfg.expRoundWin, dummy);
-	LoadRewardPair(rewards, "round_lose", g_Cfg.expRoundLose, dummy);
-	LoadRewardPair(rewards, "mvp", g_Cfg.expMvp, g_Cfg.coinsMvp);
-	LoadRewardPair(rewards, "bomb_plant", g_Cfg.expBombPlant, dummy);
-	LoadRewardPair(rewards, "bomb_defuse", g_Cfg.expBombDefuse, dummy);
-	LoadRewardPair(rewards, "bomb_drop", g_Cfg.expBombDrop, dummy);
-	LoadRewardPair(rewards, "bomb_pickup", g_Cfg.expBombPickup, dummy);
-	LoadRewardPair(rewards, "hostage_kill", g_Cfg.expHostageKill, dummy);
-	LoadRewardPair(rewards, "hostage_rescue", g_Cfg.expHostageRescue, dummy);
-
-	KeyValues* mk = rewards->FindKey("multikill", false);
-	if (mk)
-		g_Cfg.coinsMultikill = mk->GetInt("coins", g_Cfg.coinsMultikill);
-}
-
-static void LoadSmartExpDefaults()
-{
-	V_snprintf(g_Cfg.expMode, sizeof(g_Cfg.expMode), "%s", "competitive");
-	g_Cfg.roundMinSec          = 45;
-	g_Cfg.roundLoseDeathScale  = 3;
-	g_Cfg.roundCapExp          = 50;
-	g_Cfg.roundCapCoins        = 15;
-	g_Cfg.botKillLimit         = 5;
-	g_Cfg.botKillExpPercent    = 50;
-	g_Cfg.teamkillHumanOnly    = true;
-	g_Cfg.afkSec               = 90;
-	g_Cfg.afkBlockCoins        = true;
-	g_Cfg.afkBlockTimeExp       = true;
-	g_Cfg.suicideGraceSec      = 3.0f;
-}
-
-static void ApplyExpModePreset(const char* mode)
-{
-	if (!mode || !*mode || !V_stricmp(mode, "custom"))
-		return;
-
-	LoadSmartExpDefaults();
-
-	if (!V_stricmp(mode, "casual"))
-	{
-		g_Cfg.minPlayers       = 3;
-		g_Cfg.roundMinSec      = 30;
-		g_Cfg.roundCapExp      = 80;
-		g_Cfg.roundCapCoins    = 25;
-		g_Cfg.botKillLimit     = 8;
-		g_Cfg.botKillExpPercent = 50;
-		g_Cfg.roundLoseDeathScale = 4;
-	}
-	else if (!V_stricmp(mode, "competitive"))
-	{
-		g_Cfg.minPlayers       = 5;
-		g_Cfg.roundMinSec      = 45;
-		g_Cfg.roundCapExp      = 50;
-		g_Cfg.roundCapCoins    = 15;
-		g_Cfg.botKillLimit     = 5;
-		g_Cfg.botKillExpPercent = 50;
-		g_Cfg.roundLoseDeathScale = 3;
-	}
-	else if (!V_stricmp(mode, "farm"))
-	{
-		g_Cfg.minPlayers       = 2;
-		g_Cfg.roundMinSec      = 20;
-		g_Cfg.roundCapExp      = 0;
-		g_Cfg.roundCapCoins    = 0;
-		g_Cfg.botKillLimit     = 0;
-		g_Cfg.afkSec           = 120;
-		g_Cfg.roundLoseDeathScale = 0;
-	}
-}
-
-static void LoadSmartExpSection(KeyValues* smart)
-{
-	LoadSmartExpDefaults();
-	if (!smart)
-		return;
-
-	V_snprintf(g_Cfg.expMode, sizeof(g_Cfg.expMode), "%s", smart->GetString("lr_exp_mode", g_Cfg.expMode));
-	ApplyExpModePreset(g_Cfg.expMode);
-
-	if (smart->GetInt("lr_round_min_seconds", -1) >= 0)
-		g_Cfg.roundMinSec = smart->GetInt("lr_round_min_seconds", g_Cfg.roundMinSec);
-	if (smart->GetInt("lr_round_lose_death_scale", -1) >= 0)
-		g_Cfg.roundLoseDeathScale = smart->GetInt("lr_round_lose_death_scale", g_Cfg.roundLoseDeathScale);
-	if (smart->GetInt("lr_round_cap_exp", -1) >= 0)
-		g_Cfg.roundCapExp = smart->GetInt("lr_round_cap_exp", g_Cfg.roundCapExp);
-	if (smart->GetInt("lr_round_cap_coins", -1) >= 0)
-		g_Cfg.roundCapCoins = smart->GetInt("lr_round_cap_coins", g_Cfg.roundCapCoins);
-	if (smart->GetInt("lr_bot_kill_limit", -1) >= 0)
-		g_Cfg.botKillLimit = smart->GetInt("lr_bot_kill_limit", g_Cfg.botKillLimit);
-	if (smart->GetInt("lr_bot_kill_exp_percent", -1) >= 0)
-		g_Cfg.botKillExpPercent = smart->GetInt("lr_bot_kill_exp_percent", g_Cfg.botKillExpPercent);
-	g_Cfg.teamkillHumanOnly = smart->GetInt("lr_teamkill_human_only", g_Cfg.teamkillHumanOnly ? 1 : 0) != 0;
-	if (smart->GetInt("lr_afk_seconds", -1) >= 0)
-		g_Cfg.afkSec = smart->GetInt("lr_afk_seconds", g_Cfg.afkSec);
-	g_Cfg.afkBlockCoins = smart->GetInt("lr_afk_block_coins", g_Cfg.afkBlockCoins ? 1 : 0) != 0;
-	g_Cfg.afkBlockTimeExp = smart->GetInt("lr_afk_block_time_exp", g_Cfg.afkBlockTimeExp ? 1 : 0) != 0;
-	g_Cfg.suicideGraceSec = smart->GetFloat("lr_suicide_grace_seconds", g_Cfg.suicideGraceSec);
-	if (g_Cfg.suicideGraceSec < 0.5f)
-		g_Cfg.suicideGraceSec = 0.5f;
-}
-
-bool LoadSettings()
-{
-	KeyValues* kv = new KeyValues("LR_Settings");
-	KeyValues::AutoDelete autoDelete(kv);
-
-	if (!kv->LoadFromFile(g_pFullFileSystem, SETTINGS_PATH))
-	{
-		Warning("[LR] Failed to load %s\n", SETTINGS_PATH);
-		return false;
-	}
-
-	KeyValues* main = kv->FindKey("MainSettings", false);
-	if (!main)
-	{
-		Warning("[LR] MainSettings section missing in %s\n", SETTINGS_PATH);
-		return false;
-	}
-
-	V_snprintf(g_Cfg.tableName, sizeof(g_Cfg.tableName), "%s", main->GetString("lr_table", "lvl_base"));
-	V_snprintf(g_Cfg.language, sizeof(g_Cfg.language), "%s", main->GetString("lr_language", "ru"));
-	g_Cfg.serverId         = main->GetInt("lr_server_id", 1);
-	g_Cfg.minPlayers       = main->GetInt("lr_minplayers_count", 5);
-	if (g_Cfg.minPlayers < 3)
-		g_Cfg.minPlayers = 5;
-	g_Cfg.showResetStats   = main->GetInt("lr_show_resetmystats", 1) != 0;
-	g_Cfg.resetCooldown    = main->GetInt("lr_resetmystats_cooldown", 86400);
-	g_Cfg.showUsualMessage = main->GetInt("lr_show_usualmessage", 1);
-	g_Cfg.showLevelUp      = main->GetInt("lr_show_levelup_message", 1) != 0;
-	g_Cfg.showLevelDown    = main->GetInt("lr_show_leveldown_message", 1) != 0;
-	g_Cfg.showAllLevelUp   = main->GetInt("lr_show_all_levelup_message", 0) != 0;
-	g_Cfg.showAllLevelDown = main->GetInt("lr_show_all_leveldown_message", 0) != 0;
-	g_Cfg.showRankMessage  = main->GetInt("lr_show_rankmessage", 1) != 0;
-	g_Cfg.topCount         = main->GetInt("lr_top_count", 10);
-	g_Cfg.startPoints      = main->GetInt("lr_start_points", 0);
-	g_Cfg.giveExpRoundEnd  = main->GetInt("lr_giveexp_roundend", 1) != 0;
-	g_Cfg.blockWarmup      = main->GetInt("lr_block_warmup", 1) != 0;
-	g_Cfg.blockCustomRound = main->GetInt("lr_block_customround", 1) != 0;
-	g_Cfg.allAgainstAll    = main->GetInt("lr_allagainst_all", 0) != 0;
-	g_Cfg.cleanDbDays      = main->GetInt("lr_cleandb_days", 30);
-	g_Cfg.saveMode         = main->GetInt("lr_db_savedataplayer_mode", 1);
-	g_Cfg.timeExpAmount    = main->GetInt("lr_time_exp_amount", 5);
-	g_Cfg.timeExpInterval  = main->GetInt("lr_time_exp_interval", 300);
-
-	KeyValues* ranks = kv->FindKey("Ranks", false);
-	if (!ranks)
-	{
-		Warning("[LR] Ranks section missing in %s\n", SETTINGS_PATH);
-		return false;
-	}
-	g_Cfg.ranksExp.clear();
-	g_Cfg.ranksKey.clear();
-	FOR_EACH_VALUE(ranks, v)
-	{
-		g_Cfg.ranksKey.emplace_back(v->GetName());
-		g_Cfg.ranksExp.emplace_back(v->GetInt(nullptr));
-	}
-	if (g_Cfg.ranksExp.empty())
-	{
-		Warning("[LR] Ranks section is empty in %s\n", SETTINGS_PATH);
-		return false;
-	}
-	if (g_Cfg.ranksExp.size() < 2 || g_Cfg.ranksExp.front() != 0)
-	{
-		Warning("[LR] Ranks must contain at least two levels and rank_1 must require 0 total XP\n");
-		return false;
-	}
-	for (size_t i = 1; i < g_Cfg.ranksExp.size(); i++)
-	{
-		if (g_Cfg.ranksExp[i] <= g_Cfg.ranksExp[i - 1])
-		{
-			Warning("[LR] Rank %u total XP threshold must be greater than rank %u\n",
-				(unsigned)(i + 1), (unsigned)i);
-			return false;
-		}
-	}
-
-	KeyValues* s = kv->FindKey("Funded_System", false);
-	if (!s)
-	{
-		Warning("[LR] Funded_System section missing\n");
-		return false;
-	}
-	g_Cfg.expKill     = s->GetInt("lr_kill", 0);
-	g_Cfg.expKillBot  = s->GetInt("lr_kill_is_bot", 0);
-	g_Cfg.expDeath    = s->GetInt("lr_death", 0);
-	g_Cfg.expDeathBot = s->GetInt("lr_death_is_bot", 0);
-	LoadExpSection(s);
-
-	LoadRewardsSection(kv->FindKey("Rewards", false));
-
-	memset(g_Cfg.bonus, 0, sizeof(g_Cfg.bonus));
-	KeyValues* b = kv->FindKey("Special_Bonuses", false);
-	if (b)
-	{
-		char key[32];
-		for (int i = 0; i < 11; i++)
-		{
-			V_snprintf(key, sizeof(key), "lr_bonus_%i", i + 1);
-			g_Cfg.bonus[i] = b->GetInt(key, 0);
-		}
-	}
-
-	KeyValues* coins = kv->FindKey("Coins", false);
-	if (coins)
-	{
-		g_Cfg.coinsIntervalSec    = coins->GetInt("lr_coins_interval", 600);
-		g_Cfg.coinsIntervalAmount = coins->GetInt("lr_coins_interval_amount", 10);
-		g_Cfg.coinsMvp            = coins->GetInt("lr_coins_mvp", 3);
-		g_Cfg.coinsMultikill      = coins->GetInt("lr_coins_multikill", 2);
-	}
-	else
-	{
-		g_Cfg.coinsIntervalSec    = 600;
-		g_Cfg.coinsIntervalAmount = 10;
-		g_Cfg.coinsMvp            = 3;
-		g_Cfg.coinsMultikill      = 2;
-	}
-
-	LoadSmartExpSection(kv->FindKey("SmartExp", false));
-
-	// Wallet API removed — coins live in lvl_ranks.coins (MySQL).
-
-	return true;
-}
+static const char* TAB_PATH = "addons/lr_core/configs/tab.ini";
 
 void LoadTabConfig()
 {
@@ -307,25 +38,19 @@ void LoadTabConfig()
 	if (g_TabCfg.revealInterval < 0.0f)
 		g_TabCfg.revealInterval = 0.0f;
 
-	KeyValues* levels = kv->FindKey("Levels", false);
-	if (levels)
+	g_TabCfg.values.clear();
+	KeyValues* values = kv->FindKey("tab_values", false);
+	if (values)
 	{
-		FOR_EACH_VALUE(levels, v)
-		{
-			int level = atoi(v->GetName());
-			if (level < 1 || level > 512)
-				continue;
-			if ((int)g_TabCfg.values.size() < level)
-				g_TabCfg.values.resize(level, 0);
-			g_TabCfg.values[level - 1] = v->GetInt(nullptr);
-		}
+		for (KeyValues* v = values->GetFirstSubKey(); v; v = v->GetNextKey())
+			g_TabCfg.values.push_back(v->GetInt(nullptr, 0));
 	}
 
-	KeyValues* above = kv->FindKey("AboveMax", false);
+	KeyValues* above = kv->FindKey("tab_above", false);
 	if (above)
 	{
-		g_TabCfg.aboveType   = above->GetInt("tab_type", g_TabCfg.type);
-		g_TabCfg.aboveValue  = above->GetInt("value", 0);
+		g_TabCfg.aboveType   = above->GetInt("type", g_TabCfg.type);
+		g_TabCfg.aboveValue  = above->GetInt("value", (int)g_TabCfg.values.size());
 		g_TabCfg.aboveUseExp = above->GetInt("use_exp", 0) != 0;
 	}
 	else
@@ -333,52 +58,8 @@ void LoadTabConfig()
 		g_TabCfg.aboveType  = g_TabCfg.type;
 		g_TabCfg.aboveValue = (int)g_TabCfg.values.size();
 	}
-}
 
-bool LoadDatabaseConfig(DBConfig& out)
-{
-	KeyValues* kv = new KeyValues("Database");
-	KeyValues::AutoDelete autoDelete(kv);
-
-	if (!kv->LoadFromFile(g_pFullFileSystem, DB_PATH))
-	{
-		Warning("[LR] Failed to load %s\n", DB_PATH);
-		return false;
-	}
-
-	out.host     = kv->GetString("host", "127.0.0.1");
-	out.port     = kv->GetInt("port", 3306);
-	out.user     = kv->GetString("user", "");
-	out.pass     = kv->GetString("pass", "");
-	out.database = kv->GetString("database", "");
-	out.charset  = kv->GetString("charset", "utf8mb4");
-
-	static const char* kSafeCharsets[] = {"utf8mb4", "utf8mb3", "utf8", "latin1", "ascii", "binary"};
-	bool charsetOk = false;
-	for (const char* c : kSafeCharsets)
-	{
-		if (!V_stricmp(out.charset.c_str(), c))
-		{
-			charsetOk = true;
-			break;
-		}
-	}
-	if (!charsetOk)
-	{
-		Warning("[LR] charset '%s' is not supported (escaping is only safe for utf8mb4/utf8/latin1/ascii/binary)\n",
-			out.charset.c_str());
-		return false;
-	}
-
-	return !out.user.empty() && !out.database.empty();
-}
-
-bool LoadAllConfigs()
-{
-	if (!LoadSettings())
-		return false;
-	LoadTabConfig();
-	if (!LoadPhrases())
-		return false;
-	return true;
+	LR_Log("tab.ini loaded enabled=%d values=%d workshop=%s",
+		g_TabCfg.enabled ? 1 : 0, (int)g_TabCfg.values.size(),
+		g_TabCfg.workshopId[0] ? g_TabCfg.workshopId : "(empty)");
 }

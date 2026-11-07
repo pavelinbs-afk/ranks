@@ -21,11 +21,6 @@ def copy_required(path, folder):
     raise Exception('lr_core: missing required file for packaging: ' + path)
   builder.AddCopy(path, folder)
 
-# database.ini itself is gitignored (it holds real credentials) and is never
-# packaged. The example goes in instead — without it the built package has no
-# database config of any kind and the plugin comes up idle on a fresh install.
-for cfg in ['settings.ini', 'tab.ini', 'database.ini.example']:
-  copy_required(os.path.join(builder.sourcePath, 'configs', cfg), configs_folder)
-
+copy_required(os.path.join(builder.sourcePath, 'configs', 'tab.ini'), configs_folder)
 copy_required(os.path.join(builder.sourcePath, 'translations', 'lr_core.phrases.txt'),
               translations_folder)

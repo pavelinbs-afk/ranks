@@ -46,7 +46,6 @@ class MMSPluginConfig(object):
     self.mms_root = mms_root
     self.all_targets = []
     self.target_archs = set()
-    self.mariadb_prefix = builder.options.mariadb_prefix
 
     if builder.options.plugin_name is not None:
       self.plugin_name = builder.options.plugin_name

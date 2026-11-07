@@ -12,5 +12,11 @@ void Tab_OnPlayerLoaded(int iSlot);
 // Re-arm TAB refresh after a level change (custom skillgroup icons).
 void Tab_OnLevelChanged(int iSlot);
 
+// C# LevelsRanks → native TAB: set competitive level (+ optional exp for above-map).
+void Tab_SetPlayerLevel(int iSlot, int level, int exp = -1);
+
+// Force re-apply + reveal for one slot.
+void Tab_RefreshPlayer(int iSlot);
+
 // Ask clients in the mask to reveal scoreboard ranks.
 void Tab_SendRevealAll(uint64_t mask);

@@ -20,18 +20,32 @@ static SchemaField s_fCompRankType {"CCSPlayerController", "m_iCompetitiveRankTy
 static SchemaField s_fCompRanking  {"CCSPlayerController", "m_iCompetitiveRanking"};
 
 static float s_flNextRevealAll = 0.0f;
+static bool s_LoggedRevealMsg = false;
+static bool s_LoggedOffsets = false;
 
 void Tab_SendRevealAll(uint64_t mask)
 {
 	if (!mask || !g_pNetworkMessages || !g_pGameEventSystem)
 		return;
 
-	INetworkMessageInternal* pMsg = g_pNetworkMessages->FindNetworkMessagePartial("ServerRankRevealAll");
+	// FakeRanks-RevealAll / CSS use the full protobuf name.
+	INetworkMessageInternal* pMsg = g_pNetworkMessages->FindNetworkMessagePartial("CCSUsrMsg_ServerRankRevealAll");
 	if (!pMsg)
+		pMsg = g_pNetworkMessages->FindNetworkMessagePartial("ServerRankRevealAll");
+	if (!pMsg)
+	{
+		if (!s_LoggedRevealMsg)
+		{
+			Warning("[LR] ServerRankRevealAll netmsg not found — TAB icons may stay hidden\n");
+			s_LoggedRevealMsg = true;
+		}
 		return;
+	}
 
 	uint64 clients = mask;
 	CNetMessage* data = pMsg->AllocateMessage();
+	if (!data)
+		return;
 	g_pGameEventSystem->PostEventAbstract(CSplitScreenSlot(-1), false, LR_MAXPLAYERS, &clients,
 		pMsg, data, 0, NetChannelBufType_t::BUF_RELIABLE);
 	delete data;
@@ -39,10 +53,13 @@ void Tab_SendRevealAll(uint64_t mask)
 
 static uint64_t ReadButtons(CEntityInstance* pController)
 {
-	if (!g_pGameEntitySystem)
+	if (!g_pGameEntitySystem || !pController)
 		return 0;
 
 	CEntityHandle hPawn = s_fPawn.Get<CEntityHandle>(pController);
+	if (!hPawn.IsValid())
+		return 0;
+
 	CEntityInstance* pPawn = g_pGameEntitySystem->GetEntityInstance(hPawn);
 	if (!pPawn)
 		return 0;
@@ -59,10 +76,6 @@ static uint64_t ReadButtons(CEntityInstance* pController)
 	return *reinterpret_cast<uint64_t*>(reinterpret_cast<uintptr_t>(pMoveServices) + offButtons + offStates);
 }
 
-// Persona level badge (слева от ника): пишем m_nPersonaDataPublicLevel внутри
-// InventoryServices и метим грязным поле m_pInventoryServices на контроллере —
-// аналог CSSharp Utilities.SetStateChanged(controller, "CCSPlayerController",
-// "m_pInventoryServices"). ServerRankRevealAll для этого бейджа не нужен.
 static void Tab_SetPersonaLevel(CEntityInstance* pController, int badge)
 {
 	void* pInv = s_fInvServices.Get<void*>(pController);
@@ -76,36 +89,58 @@ static void Tab_SetPersonaLevel(CEntityInstance* pController, int badge)
 
 	int32_t* pLevel = reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pInv) + offField);
 	if (*pLevel == badge)
-		return; // no change, no dirty
+		return;
 
 	*pLevel = badge;
 	Schema_NetworkStateChanged(pController, offSvc);
 }
 
-// Force-dirty all three competitive-rank fields (even if values are unchanged).
-// Needed after MultiAddonManager finishes mounting: the client may have already
-// failed to open skillgroup{N}.vsvg_c once; a fresh networked write + reveal
-// makes Panorama retry the resource.
-static void Tab_ForceApplyCompetitive(CEntityInstance* pController, int wins, int rankType, int rankValue)
+// Write competitive fields. ABKAM/CSS set CompetitiveWins + RankType + Ranking
+// and dirty each networked prop; dirtying only RankType can leave icon stale.
+// Returns true when values changed (caller should ServerRankRevealAll).
+static bool Tab_ApplyCompetitive(CEntityInstance* pController, int wins, int rankType, int rankValue, bool forceDirty)
 {
 	int32_t offWins = s_fCompWins.Offset();
 	int32_t offType = s_fCompRankType.Offset();
 	int32_t offRank = s_fCompRanking.Offset();
 	if (offWins < 0 || offType < 0 || offRank < 0)
-		return;
+	{
+		if (!s_LoggedOffsets)
+		{
+			Warning("[LR] competitive schema offsets missing wins=%d type=%d rank=%d\n",
+				offWins, offType, offRank);
+			s_LoggedOffsets = true;
+		}
+		return false;
+	}
 
-	*reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offWins) = wins;
-	*reinterpret_cast<int8_t*>(reinterpret_cast<uintptr_t>(pController) + offType) = (int8_t)rankType;
-	*reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offRank) = rankValue;
+	if (!s_LoggedOffsets)
+	{
+		ConMsg("[LR] TAB schema OK wins@%d type@%d rank@%d\n", offWins, offType, offRank);
+		s_LoggedOffsets = true;
+	}
 
-	Schema_NetworkStateChanged(pController, offWins);
-	Schema_NetworkStateChanged(pController, offType);
-	Schema_NetworkStateChanged(pController, offRank);
+	auto* pWins = reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offWins);
+	auto* pType = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(pController) + offType);
+	auto* pRank = reinterpret_cast<int32_t*>(reinterpret_cast<uintptr_t>(pController) + offRank);
+
+	const uint8_t type8 = (uint8_t)rankType;
+	const bool changed = (*pWins != wins) || (*pType != type8) || (*pRank != rankValue);
+	*pWins = wins;
+	*pType = type8;
+	*pRank = rankValue;
+
+	if (forceDirty || changed)
+	{
+		Schema_NetworkStateChanged(pController, offWins);
+		Schema_NetworkStateChanged(pController, offType);
+		Schema_NetworkStateChanged(pController, offRank);
+	}
+	return changed;
 }
 
 static bool Tab_IsCustomSkillgroup(int rankValue)
 {
-	// Vanilla MM icons are 1..18. Anything above must come from the workshop addon.
 	return rankValue > 18;
 }
 
@@ -144,6 +179,35 @@ void Tab_OnLevelChanged(int iSlot)
 	g_Players[iSlot].tabRefreshUntil = g_Players[iSlot].tabIconsAt + g_TabCfg.iconsRefresh;
 }
 
+void Tab_SetPlayerLevel(int iSlot, int level, int exp)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
+		return;
+
+	PlayerInfo& p = g_Players[iSlot];
+	if (!p.loaded)
+		return;
+
+	if (level < 1)
+		level = 1;
+	if (level > 999)
+		level = 999;
+
+	p.level = level;
+	if (exp >= 0)
+		p.st.exp = exp;
+
+	p.tabOverride = 0;
+	Tab_OnLevelChanged(iSlot);
+}
+
+void Tab_RefreshPlayer(int iSlot)
+{
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !g_Players[iSlot].loaded)
+		return;
+	Tab_OnLevelChanged(iSlot);
+}
+
 void Tab_OnGameFrame()
 {
 	if (!g_TabCfg.enabled || !g_bCoreReady)
@@ -153,6 +217,7 @@ void Tab_OnGameFrame()
 	float now = gv ? gv->curtime : 0.0f;
 
 	uint64_t revealMask = 0;
+	bool rankDataChanged = false;
 	const bool periodicReveal = (g_TabCfg.revealInterval > 0.0f && now >= s_flNextRevealAll);
 	if (periodicReveal)
 		s_flNextRevealAll = now + g_TabCfg.revealInterval;
@@ -182,51 +247,54 @@ void Tab_OnGameFrame()
 			rankValue = g_TabCfg.aboveUseExp ? p.st.exp : g_TabCfg.aboveValue;
 		}
 
-		// lr_tab_test: предпросмотр произвольного значения бейджа
 		if (p.tabOverride > 0)
 			rankValue = p.tabOverride;
 
 		if (g_TabCfg.mode == 1)
 		{
-			// persona: бейдж уровня профиля; competitive-колонку не трогаем
 			Tab_SetPersonaLevel(pController, rankValue);
 			continue;
 		}
 
-		const bool customIcon = (rankType == 12 && Tab_IsCustomSkillgroup(rankValue));
-		const bool iconsReady = !customIcon || Tab_IconsReady(p, now);
+		bool customIcon = (rankType == 12 && Tab_IsCustomSkillgroup(rankValue));
 
-		// Wait for MultiAddonManager to finish the client reconnect/download
-		// cycle before pointing Panorama at skillgroup{N}.vsvg_c. An early miss
-		// is cached by ResourceSystem and stays broken for the rest of the session.
-		if (!iconsReady)
-			continue;
+		// Do NOT remap custom IDs when workshop_id is empty — mm_extra_addons alone
+		// can still deliver VPK. Remapping hid skillgroup50+ even with a correct addon
+		// (and produced zero FILEOPEN, because skillgroup69 was never requested).
+		if (customIcon && !g_TabCfg.workshopId[0])
+		{
+			static bool s_LoggedNoWorkshop = false;
+			if (!s_LoggedNoWorkshop)
+			{
+				Warning("[LR] tab.ini workshop_id empty — still writing custom skillgroup IDs; "
+					"ensure mm_extra_addons has the ranks workshop (e.g. 3776604952)\n");
+				s_LoggedNoWorkshop = true;
+			}
+		}
 
-		const bool inRefresh = g_TabCfg.iconsRefresh > 0.0f
+		// Always write Comp* like ABKAM OnTick. Do NOT skip custom IDs until iconsDelay —
+		// with the addon already on the client there is no FILEOPEN, and the gate just
+		// left ranking at 0 so TAB stayed blank. Delay only widens the force-refresh window.
+		const bool delayDone = !customIcon || Tab_IconsReady(p, now);
+		const bool inRefresh = delayDone
+			&& g_TabCfg.iconsRefresh > 0.0f
 			&& p.tabRefreshUntil > 0.0f
 			&& now < p.tabRefreshUntil;
 		const bool needForce = !p.tabIconsApplied || (inRefresh && periodicReveal);
 
+		const bool changed = Tab_ApplyCompetitive(pController, g_TabCfg.wins, rankType, rankValue, needForce);
 		if (needForce)
-		{
-			Tab_ForceApplyCompetitive(pController, g_TabCfg.wins, rankType, rankValue);
 			p.tabIconsApplied = true;
-			revealMask |= 1ull << i;
-		}
-		else
-		{
-			s_fCompWins.SetNetworked<int32_t>(pController, g_TabCfg.wins);
-			s_fCompRankType.SetNetworked<int8_t>(pController, (int8_t)rankType);
-			s_fCompRanking.SetNetworked<int32_t>(pController, rankValue);
-		}
 
-		if (!p.revealSent)
+		// RevealAll unlocks the recipient's scoreboard to SHOW everyone's Comp* fields.
+		// Cruze: on TAB press. ABKAM: when this player's values change.
+		if (!p.revealSent || changed)
 		{
 			p.revealSent = true;
+			rankDataChanged = true;
 			revealMask |= 1ull << i;
 		}
 
-		// re-reveal when the player opens the scoreboard
 		uint64_t buttons = ReadButtons(pController);
 		if ((buttons & (1ull << IN_SCOREBOARD_BIT)) && !(p.oldButtons & (1ull << IN_SCOREBOARD_BIT)))
 			revealMask |= 1ull << i;
@@ -236,5 +304,18 @@ void Tab_OnGameFrame()
 			revealMask |= 1ull << i;
 	}
 
-	Tab_SendRevealAll(revealMask);
+	if (revealMask)
+	{
+		// Rank field updates must be revealed to every loaded client; otherwise only the
+		// changed slot refreshes TAB and others keep a blank icon (no FILEOPEN either).
+		if (rankDataChanged || periodicReveal)
+		{
+			for (int i = 0; i < LR_MAXPLAYERS; i++)
+			{
+				if (g_Players[i].loaded)
+					revealMask |= 1ull << i;
+			}
+		}
+		Tab_SendRevealAll(revealMask);
+	}
 }

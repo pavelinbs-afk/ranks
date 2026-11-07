@@ -61,5 +61,7 @@ int32_t Schema_GetOffset(const char* className, const char* fieldName)
 
 void Schema_NetworkStateChanged(CEntityInstance* pEntity, int32_t offset)
 {
+	if (!pEntity || offset < 0)
+		return;
 	pEntity->NetworkStateChanged(NetworkStateChangedData((uint32)offset));
 }

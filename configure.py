@@ -16,8 +16,6 @@ parser.options.add_argument('--hl2sdk-manifests', type=str, dest='hl2sdk_manifes
                        help='HL2SDK manifests source tree folder')
 parser.options.add_argument('--mms_path', type=str, dest='mms_path', default=None,
                        help='Metamod:Source source tree folder')
-parser.options.add_argument('--mariadb-prefix', type=str, dest='mariadb_prefix', default='/opt/mariadb',
-                       help='mariadb-connector-c install prefix (static)')
 parser.options.add_argument('--enable-debug', action='store_const', const='1', dest='debug',
                        help='Enable debugging symbols')
 parser.options.add_argument('--enable-optimize', action='store_const', const='1', dest='opt',

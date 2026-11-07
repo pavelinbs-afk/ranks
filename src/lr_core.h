@@ -12,11 +12,7 @@
 #include <networksystem/inetworkmessages.h>
 
 #include <cstdint>
-#include <ctime>
-#include <string>
 #include <vector>
-
-#include "lr_api.h"
 
 #define LR_MAXPLAYERS 64
 
@@ -31,223 +27,71 @@ public:
 	void* OnMetamodQuery(const char* iface, int* ret) override;
 
 	const char* GetAuthor() override		{ return "2k_x & pRfect"; }
-	const char* GetName() override			{ return "[LR] Core"; }
-	const char* GetDescription() override	{ return "Levels Ranks core (standalone)"; }
+	const char* GetName() override			{ return "[LR] Core TAB"; }
+	const char* GetDescription() override	{ return "Levels Ranks TAB icons only (XP in LevelsRanks C#)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "2.7.4"; }
+	const char* GetVersion() override		{ return "3.0.0-tab"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 
-public: // hooks (first arg = hooked this; KHook MM 2.0)
+public:
 	KHook::Return<void> Hook_GameFrame(ISource2Server*, bool simulating, bool bFirstTick, bool bLastTick);
 	KHook::Return<void> Hook_ClientPutInServer(IServerGameClients*, CPlayerSlot slot, char const* pszName, int type, uint64 xuid);
 	KHook::Return<void> Hook_ClientDisconnect(IServerGameClients*, CPlayerSlot slot, ENetworkDisconnectionReason reason, const char* pszName, uint64 xuid, const char* pszNetworkID);
-	KHook::Return<void> Hook_DispatchConCommand(ICvar*, ConCommandRef cmd, const CCommandContext& ctx, const CCommand& args);
 	KHook::Return<void> Hook_StartupServer(INetworkServerService*, const GameSessionConfiguration_t& config, ISource2WorldSession*, const char*);
-	KHook::Return<int>  Hook_LoadEventsFromFile(IGameEventManager2* pThis, const char* filename, bool bSearchAll);
 	KHook::Return<void> Hook_EntitySystemSpawn(CEntitySystem* pThis, int nCount, const EntitySpawnInfo_t* pInfo);
 
 protected:
 	KHook::Virtual<ISource2Server, void, bool, bool, bool> m_GameFrame;
 	KHook::Virtual<IServerGameClients, void, CPlayerSlot, char const*, int, uint64> m_ClientPutInServer;
 	KHook::Virtual<IServerGameClients, void, CPlayerSlot, ENetworkDisconnectionReason, const char*, uint64, const char*> m_ClientDisconnect;
-	KHook::Virtual<ICvar, void, ConCommandRef, const CCommandContext&, const CCommand&> m_DispatchConCommand;
 	KHook::Virtual<INetworkServerService, void, const GameSessionConfiguration_t&, ISource2WorldSession*, const char*> m_StartupServer;
-	KHook::Virtual<IGameEventManager2, int, const char*, bool> m_LoadEventsFromFile;
 	KHook::Virtual<CEntitySystem, void, int, const EntitySpawnInfo_t*> m_EntitySystemSpawn;
-};
-
-// ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
-
-struct LRSettings
-{
-	char tableName[64];
-	char language[16];
-	int  serverId;
-	int  minPlayers;       // humans for full exp; 3-4 → 1 exp, <3 → 0
-	bool showResetStats;
-	int  resetCooldown;
-	int  showUsualMessage; // 0 = off; non-zero = round-end exp summary + coin notices
-	bool showLevelUp, showLevelDown, showAllLevelUp, showAllLevelDown;
-	bool showRankMessage;
-	int  topCount;
-	int  startPoints;
-	bool giveExpRoundEnd;
-	bool blockWarmup;
-	bool blockCustomRound; // VIP custom rounds (lr_customround)
-	bool allAgainstAll;
-	int  cleanDbDays;
-	int  saveMode;
-
-	// exp amounts (positive numbers; sign applied at call sites)
-	int expKill, expKillBot, expDeath, expDeathBot;
-	int expHeadshot, expAssist, expSuicide, expTeamkill;
-	int expRoundWin, expRoundLose, expMvp;
-	int expBombPlant, expBombDefuse, expBombDrop, expBombPickup;
-	int expHostageKill, expHostageRescue;
-	int bonus[11];
-
-	// periodic exp for time spent in game (independent of player count)
-	int timeExpAmount;     // exp per interval (0 = feature off)
-	int timeExpInterval;   // seconds between grants
-
-	// coins → lvl_ranks.coins in MySQL (same balance as the website)
-	int coinsIntervalSec;    // active team seconds between grants (0 = off)
-	int coinsIntervalAmount; // coins per interval (default 10 / 10 min)
-	int coinsMvp;
-	int coinsMultikill;
-
-	// Smart exp (SmartExp section + lr_exp_mode presets)
-	char expMode[24];           // custom | casual | competitive | farm
-	int  roundMinSec;           // min active-team seconds for round win/lose
-	int  roundLoseDeathScale;   // at N+ deaths in round, lose penalty halved (0=off)
-	int  roundCapExp;           // max exp gain per round (0=unlimited)
-	int  roundCapCoins;         // max coins gain per round (0=unlimited)
-	int  botKillLimit;          // full bot-kill exp for first N per round (0=all)
-	int  botKillExpPercent;     // exp % after limit
-	bool teamkillHumanOnly;     // teamkill penalty only vs loaded humans
-	int  afkSec;                // no shoot/hurt/kill for N sec → AFK (0=off)
-	bool afkBlockCoins;
-	bool afkBlockTimeExp;
-	float suicideGraceSec;
-
-	// ranks (level thresholds, ascending; level i+1 requires ranksExp[i])
-	std::vector<int> ranksExp;
-	std::vector<std::string> ranksKey; // phrase keys ("rank_1", ...)
 };
 
 struct LRTabSettings
 {
-	bool enabled;
-	int  mode;                 // 0 = competitive rank column (default), 1 = persona level badge
-	int  wins;
-	int  type;                 // rank type for mapped levels (competitive mode)
-	std::vector<int> values;   // values[level-1] = ranking value / persona badge level
-	int  aboveType;
-	int  aboveValue;
-	bool aboveUseExp;
+	bool enabled = false;
+	int  mode = 0;                 // 0 = competitive, 1 = persona
+	int  wins = 777;
+	int  type = 12;
+	std::vector<int> values;
+	int  aboveType = 12;
+	int  aboveValue = 21;
+	bool aboveUseExp = false;
 
-	// Workshop skillgroup icons (MultiAddonManager)
-	char workshopId[32];       // e.g. "3772685382"; empty = do not touch MAM
-	float iconsDelay;          // seconds after load before writing custom skillgroup IDs
-	float iconsRefresh;        // seconds of forced re-dirty after first apply (0 = off)
-	float revealInterval;      // periodic ServerRankRevealAll to all players (0 = off)
-};
-
-// ---------------------------------------------------------------------------
-// Per-player state
-// ---------------------------------------------------------------------------
-
-// Categories for round ledger (internal accounting).
-enum RoundLedgerCat : uint8_t
-{
-	RLEDGER_KILL = 0,
-	RLEDGER_DEATH,
-	RLEDGER_WINLOSE,
-	RLEDGER_MVP,
-	RLEDGER_BONUS,
-	RLEDGER_BOMB,
-	RLEDGER_ASSIST,
-	RLEDGER_PENALTY,
-	RLEDGER_OTHER,
-	RLEDGER_COUNT
-};
-
-enum RoundCoinCat : uint8_t
-{
-	RCOIN_MVP = 0,
-	RCOIN_MULTIKILL,
-	RCOIN_INTERVAL,
-	RCOIN_COUNT
-};
-
-struct RoundLedger
-{
-	int exp[RLEDGER_COUNT] = {};
-	int coins[RCOIN_COUNT] = {};
-
-	void Clear() { *this = RoundLedger{}; }
-
-	int TotalExp() const
-	{
-		int s = 0;
-		for (int v : exp) s += v;
-		return s;
-	}
-
-	int TotalCoins() const
-	{
-		int s = 0;
-		for (int v : coins) s += v;
-		return s;
-	}
+	char workshopId[32] = {};
+	float iconsDelay = 12.0f;
+	float iconsRefresh = 20.0f;
+	float revealInterval = 2.0f;
 };
 
 struct PlayerStats
 {
 	int exp = 0;
-	int kills = 0, deaths = 0, shoots = 0, hits = 0;
-	int headshots = 0, assists = 0, roundWin = 0, roundLose = 0;
 };
 
 struct PlayerInfo
 {
-	bool  loaded = false;      // stats fetched from DB
-	bool  haveBomb = false;
+	bool  loaded = false;
 	uint64_t steam64 = 0;
-	char  steamId[24] = {0};   // STEAM_1:X:Y
-	char  name[128] = {0};
+	char  steamId[24] = {};
+	char  name[128] = {};
 
-	int   level = 0;           // 1-based rank index, 0 = none yet
-	PlayerStats st;            // persistent totals
-	PlayerStats sess;          // this-session deltas
-	int64_t dbPlaytime = 0;       // active team seconds banked in DB
-	int64_t sessionActiveSec = 0; // active team seconds this session (not yet flushed)
-	time_t  connectTime = 0;      // session clock for !session
+	int   level = 1;
+	PlayerStats st;
 
-	int activeSecSinceCoin = 0;   // active seconds toward next interval coin grant
+	uint64_t oldButtons = 0;
+	bool revealSent = false;
+	int  tabOverride = 0;
 
-	int posTop = 0, posTopTime = 0;
-	int sessPosTop = 0, sessPosTopTime = 0;
-
-	int killStreak = 0;
-	int roundExp = 0;
-	int coins = 0;             // persistent balance (lvl_ranks.coins)
-	int roundCoins = 0;        // accumulated this round (shown on round_end)
-	int64_t lastCoinIntervalBucket = -1;
-	time_t timeExpAt = 0;      // next periodic time-exp grant (0 = arm on first frame)
-	time_t resetCooldownUntil = 0;
-
-	int roundSecActive = 0;    // seconds on T/CT this round (for win/lose eligibility)
-	int roundDeaths = 0;       // deaths this round (progressive lose penalty)
-	int roundBotKills = 0;
-	time_t lastActivityAt = 0; // AFK detection (weapon_fire / hurt / kill)
-	bool roundAfk = false;
-
-	RoundLedger roundLedger;
-	RoundLedger lastRoundLedger;
-
-	uint64_t oldButtons = 0;   // scoreboard button edge detection
-	bool revealSent = false;   // ServerRankRevealAll sent after load
-	int  tabOverride = 0;      // lr_tab_test preview badge (0 = off)
-
-	// Workshop SVG icons: wait for MultiAddonManager reconnect/mount, then
-	// force-dirty fields for a short window so Panorama retries the resource.
-	float tabIconsAt = 0.0f;       // curtime when custom skillgroup IDs may be written
-	float tabRefreshUntil = 0.0f;  // curtime until which we keep force-dirtying
+	float tabIconsAt = 0.0f;
+	float tabRefreshUntil = 0.0f;
 	bool  tabIconsApplied = false;
-
-	float ignoreSuicideUntil = 0.0f; // curtime: no lr_suicide penalty (team → spec)
 
 	void Reset() { *this = PlayerInfo(); }
 };
-
-// ---------------------------------------------------------------------------
-// Globals
-// ---------------------------------------------------------------------------
 
 extern LRCorePlugin g_LRPlugin;
 
@@ -255,104 +99,21 @@ extern IVEngineServer2* g_pEngine;
 extern ISource2Server* g_pServer;
 extern IServerGameClients* g_pGameClients;
 extern IGameEventSystem* g_pGameEventSystem;
-extern IGameEventManager2* g_pGameEventManager;
 extern INetworkServerService* g_pNetServerService;
 extern CGameEntitySystem* g_pGameEntitySystem;
 
-struct DBConfig;
-extern DBConfig g_DBConfig;
-
-extern LRSettings g_Cfg;
 extern LRTabSettings g_TabCfg;
 extern PlayerInfo g_Players[LR_MAXPLAYERS];
-
-extern bool g_bCoreReady;        // DB connected + table ready
-extern bool g_bAllowStatistic;   // not warmup / not custom round
-extern bool g_bCustomRoundActive; // set by lr_customround (VIP integration)
-extern bool g_bAdminExpBypass;   // set by lr_admin_bypass (AdminPlugin developer menu)
-extern int  g_iDBCountPlayers;
+extern bool g_bCoreReady;
+extern bool g_bCustomRoundActive;
 
 inline CGlobalVars* GetGlobals()
 {
 	return g_pEngine ? g_pEngine->GetServerGlobals() : nullptr;
 }
 
-// entity index for player slot N is N+1
-CEntityInstance* GetControllerBySlot(int iSlot);
-
-// Bumped by every LoadPlayer. A DB callback captures the value it started with
-// and bails if it no longer matches: comparing steam64 alone is not enough,
-// because a player can disconnect and reconnect into the same slot while their
-// own query is still in flight, and then the stale result would be applied.
-uint32_t PlayerGeneration(int iSlot);
-
-// player is a real, fully authenticated human with loaded stats
-bool IsPlayerReady(int iSlot);
-
-void NormalizeRankState(int& level, int& exp);
-int ExpForNextLevel(int level);
-void CheckRank(int iSlot, bool bNotify = true);
-
-// Total playtime in seconds: what is banked in the DB plus the time accrued
-// since the last save (sessionActiveSec moves on every save, connectTime does not).
-int64_t TotalPlaytime(int iSlot);
-
-// Seconds since the player connected (0 if not tracked yet).
-int64_t SessionTime(int iSlot);
-
-float StatKD(int kills, int deaths);
-
-// "5ч 07м" / "12м 30с" — human duration for chat.
-void FormatDuration(int64_t seconds, char* out, int outSize);
-
-// "528 ч. 29 м. 47 сек." — long form for stats menu.
-void FormatPlaytimeLong(int64_t seconds, char* out, int outSize);
-
-// Central exp mutation: applies floors, session stats, rank check, chat message.
-// Returns true if the change was applied (player ready + stats allowed or bypassed).
-bool ChangeExp(int iSlot, int delta, const char* phraseKey, bool bypassRestrictions = false,
-	int coins = 0, const char* coinGrantKind = nullptr,
-	RoundLedgerCat ledgerCat = RLEDGER_OTHER, RoundCoinCat coinCat = RCOIN_MVP);
-
-void NotePlayerActivity(int iSlot);
-bool IsPlayerAfk(int iSlot);
-void AddRoundLedgerExp(int iSlot, RoundLedgerCat cat, int delta);
-void AddRoundLedgerCoin(int iSlot, RoundCoinCat cat, int amount);
-
-void SavePlayer(int iSlot, bool disconnect = false);
-
-// flushCurrent: write the in-memory stats out before wiping them. Wanted when
-// the same player is being re-loaded over a live session (map change), and
-// explicitly *not* wanted after lr_reset, where the old values must not come
-// back into the table that was just cleared.
-void LoadPlayer(int iSlot, uint64_t steam64, bool flushCurrent = true);
-void ResetPlayerStats(int iSlot);
-
-// Periodic exp for time in game; call once per game frame.
-void GiveTimeExp();
-
-// T/CT only — not spectator, not hide (team none).
-bool IsPlayerOnActiveTeam(int iSlot);
-
-// Active team playtime + interval coins; call once per game frame.
-void TickActivePlaytime();
-
-// Keep `online` / `lastconnect` fresh while players are connected (profile «Играет на …»).
-void PulseOnlinePresence();
-
-// Immediate offline signal on disconnect (before full SavePlayer flush).
-void ClearPlayerOnlinePresence(int iSlot);
-
-// Interval coins only (no exp). Credits lvl_ranks.coins; summary on round_end.
-bool GrantIntervalCoins(int iSlot);
-
-// Atomic MySQL grant: UPDATE coins = coins + amount. Updates memory + roundCoins.
-bool GrantCoins(int iSlot, int amount, RoundCoinCat coinCat = RCOIN_INTERVAL);
-
-// API hook broadcast (implemented in lr_core.cpp)
-void ApiFireCoreReady();
-void ApiFireLevelChanged(int iSlot, int newLevel, int oldLevel);
-void ApiFireExpChanged(int iSlot, int delta, int newExp);
-void ApiFirePlayerLoaded(int iSlot, uint64_t steam64);
-
 void LR_Log(const char* fmt, ...);
+
+CEntityInstance* GetControllerBySlot(int iSlot);
+int FindSlotBySteam64(uint64_t steam64);
+void Steam64ToSteamId(uint64_t steam64, char* out, int outSize);

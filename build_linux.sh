@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build lr_core.so for Linux inside the lvlranks-builder2 docker image.
+# Build lr_core.so (TAB-only) for Linux inside the lvlranks-builder2 docker image.
 # Usage (from host):
 #   docker run --rm -v <repo-root>:/work lvlranks-builder2 bash -lc \
 #     "sed -i 's/\r$//' /work/lr_core/build_linux.sh && bash /work/lr_core/build_linux.sh"
@@ -8,8 +8,6 @@ set -e
 ROOT=/work
 SRC=$ROOT/lr_core
 BUILD=$SRC/build_linux
-
-chmod +x $ROOT/deps/hl2sdk-cs2/devtools/bin/linux/protoc 2>/dev/null || true
 
 mkdir -p $BUILD
 cd $BUILD
@@ -29,8 +27,7 @@ if [ ! -f .ambuild2/graph ] && [ ! -d .ambuild2 ]; then
     --targets=x86_64 \
     --hl2sdk-root=$ROOT/deps \
     --hl2sdk-manifests=$ROOT/deps/hl2sdk-manifests \
-    --mms_path=$ROOT/deps/metamod-source \
-    --mariadb-prefix=/opt/mariadb
+    --mms_path=$ROOT/deps/metamod-source
 fi
 
 ambuild

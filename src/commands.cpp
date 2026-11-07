@@ -1,483 +1,79 @@
 #include "lr_core.h"
 #include "commands.h"
-#include "chat.h"
 #include "config.h"
-#include "db.h"
-#include "events.h"
-#include "menu.h"
-#include "menu_layout.h"
 #include "players.h"
+#include "tab.h"
 
 #include <convar.h>
-#include <string>
-#include <vector>
+#include <cstdlib>
 
-bool g_bAdminExpBypass = false;
+bool g_bCustomRoundActive = false;
 
-// ---------------------------------------------------------------------------
-// chat commands
-// ---------------------------------------------------------------------------
+static CConVar<bool> g_cvLrCustomRoundActive(
+	"lr_custom_round_active",
+	FCVAR_NOTIFY,
+	"1 while VIP custom round is active (LevelsRanks C# polls this)",
+	false);
 
-static bool ParseMenuKey(const char* text, int* outKey)
+static int ResolveTabSlot(const char* token)
 {
-	if (!text || (text[0] != '!' && text[0] != '/'))
-		return false;
-	if (text[1] < '1' || text[1] > '9')
-		return false;
-	if (text[2] != '\0' && text[2] != ' ')
-		return false;
-	*outKey = text[1] - '0';
-	return true;
+	if (!token || !*token)
+		return -1;
+
+	char* end = nullptr;
+	unsigned long long v = strtoull(token, &end, 10);
+	if (end && *end == '\0')
+	{
+		if (v <= 63)
+			return (int)v;
+		return FindSlotBySteam64(v);
+	}
+	return -1;
 }
 
-static void CmdRank(int iSlot)
+CON_COMMAND_F(lr_tab_set, "lr_tab_set <slot|steamid64> <level> [exp] — C# LevelsRanks → TAB icon", FCVAR_GAMEDLL)
 {
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
+	if (args.ArgC() < 3)
 	{
-		LRPrintPhrase(iSlot, "NotLoaded");
+		Msg("Usage: lr_tab_set <slot|steamid64> <level> [exp]\n");
 		return;
 	}
 
-	uint64_t steam64 = p.steam64;
-	char q[512];
-	V_snprintf(q, sizeof(q),
-		"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s);",
-		g_Cfg.tableName, p.level, p.level, p.st.exp, LR_SQL_LASTCONNECT_ACTIVE);
+	int iSlot = ResolveTabSlot(args[1]);
+	int level = atoi(args[2]);
+	int exp = args.ArgC() >= 4 ? atoi(args[3]) : -1;
 
-	DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
-		PlayerInfo& p = g_Players[iSlot];
-		if (p.steam64 != steam64 || !p.loaded || PlayerGeneration(iSlot) != gen)
-			return;
-		if (r.ok && r.RowCount())
-			p.posTop = r.GetInt(0, 0);
-
-		float kd = p.st.kills / (p.st.deaths ? float(p.st.deaths) : 1.0f);
-		// Chat color bytes (phrases already resolve {TOKEN} at load time).
-		char kdColor = '\x07'; // RED
-		if (kd > 2.0f)
-			kdColor = '\x04'; // GREEN
-		else if (kd >= 1.0f)
-			kdColor = '\x09'; // YELLOW
-
-		char kdStr[32];
-		V_snprintf(kdStr, sizeof(kdStr), "%c%.2f%c", kdColor, kd, '\x01');
-
-		if (g_Cfg.showRankMessage)
-		{
-			for (int i = 0; i < LR_MAXPLAYERS; i++)
-			{
-				if (g_Players[i].loaded)
-					LRPrintPhrase(i, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-						p.st.exp, p.st.kills, p.st.deaths, kdStr);
-			}
-		}
-		else
-		{
-			LRPrintPhrase(iSlot, "RankPlayer", p.name, p.posTop, g_iDBCountPlayers,
-				p.st.exp, p.st.kills, p.st.deaths, kdStr);
-		}
-	});
-}
-
-static void CmdLevel(int iSlot)
-{
-	Menu_OpenLvl(iSlot);
-}
-
-static void CmdSession(int iSlot)
-{
-	Menu_OpenSession(iSlot);
-}
-
-static void CmdTop(int iSlot, bool byTime)
-{
-	Menu_OpenTop(iSlot, byTime);
-}
-
-static void CmdResetStats(int iSlot)
-{
-	Commands_RequestResetStats(iSlot);
-}
-
-// Copies the bare command word ("!session extra" -> "session").
-static void ParseCmdWord(const char* text, char* out, int outSize)
-{
-	V_snprintf(out, outSize, "%s", text + 1);
-	for (char* c = out; *c; c++)
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !g_Players[iSlot].loaded)
 	{
-		if (*c == ' ')
-		{
-			*c = '\0';
-			break;
-		}
-	}
-}
-
-static bool RunChatCommand(int iSlot, const char* text)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
-		return false;
-	if (text[0] != '!' && text[0] != '/')
-		return false;
-
-	int menuKey = 0;
-	if (ParseMenuKey(text, &menuKey) && Menu_IsActive(iSlot))
-	{
-		if (!Menu_IsWasdActive(iSlot))
-			Menu_TryHandleKey(iSlot, menuKey);
-		return true;
-	}
-
-	char cmd[32];
-	ParseCmdWord(text, cmd, sizeof(cmd));
-
-	// Rank menus live in C++ (LRCenterHtml). VIP must not intercept these chat cmds.
-	if (!V_stricmp(cmd, "rank") || !V_stricmp(cmd, "ранг"))
-		CmdRank(iSlot);
-	else if (!V_stricmp(cmd, "lvl") || !V_stricmp(cmd, "level") || !V_stricmp(cmd, "лвл"))
-		CmdLevel(iSlot);
-	else if (!V_stricmp(cmd, "session") || !V_stricmp(cmd, "сессия"))
-		CmdSession(iSlot);
-	else if (!V_stricmp(cmd, "top") || !V_stricmp(cmd, "топ"))
-		CmdTop(iSlot, false);
-	else if (!V_stricmp(cmd, "toptime") || !V_stricmp(cmd, "топактив"))
-		CmdTop(iSlot, true);
-	else if (!V_stricmp(cmd, "resetstats") || !V_stricmp(cmd, "сбросстаты"))
-		CmdResetStats(iSlot);
-	else
-		return false;
-
-	return true;
-}
-
-bool Commands_IsChatCommand(int iSlot, const char* text)
-{
-	if (!text || (text[0] != '!' && text[0] != '/'))
-		return false;
-
-	int menuKey = 0;
-	if (ParseMenuKey(text, &menuKey) && iSlot >= 0 && Menu_IsActive(iSlot))
-		return true;
-
-	char cmd[32];
-	ParseCmdWord(text, cmd, sizeof(cmd));
-
-	static const char* known[] = {
-		"rank", "ранг",
-		"lvl", "level", "лвл",
-		"session", "сессия",
-		"top", "топ",
-		"toptime", "топактив",
-		"resetstats", "сбросстаты",
-	};
-	for (const char* k : known)
-	{
-		if (!V_stricmp(cmd, k))
-			return true;
-	}
-	return false;
-}
-
-// ---------------------------------------------------------------------------
-// Deferred execution: the say hook fires before the engine echoes the player's
-// own chat line, so output produced there would appear *above* the "!session"
-// they typed. We stash the command and run it on the next frame instead.
-// ---------------------------------------------------------------------------
-
-struct PendingCmd
-{
-	int iSlot;
-	uint64_t steam64; // guards against the slot being reused before we run
-	char text[64];
-};
-
-struct PendingSay
-{
-	int iSlot;
-	uint64_t steam64;
-	char text[256];
-};
-
-static std::vector<PendingCmd> s_Pending;
-static std::vector<PendingSay> s_PendingSay;
-
-static bool s_PendingReset[LR_MAXPLAYERS] = {};
-static time_t s_PendingResetUntil[LR_MAXPLAYERS] = {};
-
-static bool IsResetConfirm(const char* text)
-{
-	if (!text || !*text)
-		return false;
-
-	char buf[256];
-	V_strncpy(buf, text, sizeof(buf));
-	char* start = buf;
-	while (*start == ' ')
-		start++;
-	int len = (int)V_strlen(start);
-	while (len > 0 && start[len - 1] == ' ')
-		start[--len] = '\0';
-
-	return !V_stricmp(start, "да") || !V_stricmp(start, "yes");
-}
-
-static void ClearPendingReset(int iSlot)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
-		return;
-	s_PendingReset[iSlot] = false;
-	s_PendingResetUntil[iSlot] = 0;
-}
-
-static void ExecuteResetStats(int iSlot)
-{
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRPrintPhrase(iSlot, "NotLoaded");
-		return;
-	}
-	if (!g_Cfg.showResetStats)
-		return;
-
-	time_t now = time(nullptr);
-	if (p.resetCooldownUntil > now)
-	{
-		int left = (int)(p.resetCooldownUntil - now);
-		LRPrintPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
+		Msg("[LR] lr_tab_set: player not online/loaded (%s)\n", args[1]);
 		return;
 	}
 
-	p.resetCooldownUntil = now + g_Cfg.resetCooldown;
-	ResetPlayerStats(iSlot);
-	LRPrintPhrase(iSlot, "ResetStatsDone");
+	Tab_SetPlayerLevel(iSlot, level, exp);
+	Msg("[LR] lr_tab_set slot=%d level=%d exp=%d\n", iSlot, g_Players[iSlot].level,
+		g_Players[iSlot].st.exp);
 }
 
-void Commands_RequestResetStats(int iSlot)
-{
-	PlayerInfo& p = g_Players[iSlot];
-	if (!p.loaded)
-	{
-		LRCenterPhrase(iSlot, "NotLoaded");
-		return;
-	}
-	if (!g_Cfg.showResetStats)
-		return;
-
-	time_t now = time(nullptr);
-	if (p.resetCooldownUntil > now)
-	{
-		int left = (int)(p.resetCooldownUntil - now);
-		LRCenterPhrase(iSlot, "ResetStatsCooldown", left / 3600, left / 60 % 60);
-		return;
-	}
-
-	s_PendingReset[iSlot] = true;
-	s_PendingResetUntil[iSlot] = now + 60;
-	LRPrintPhrase(iSlot, "ResetStatsConfirm");
-}
-
-bool Commands_IsAwaitingResetConfirm(int iSlot)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !s_PendingReset[iSlot])
-		return false;
-
-	time_t now = time(nullptr);
-	if (now > s_PendingResetUntil[iSlot])
-	{
-		ClearPendingReset(iSlot);
-		return false;
-	}
-	return true;
-}
-
-void Commands_QueuePendingSay(int iSlot, const char* text)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !text)
-		return;
-
-	PendingSay p;
-	p.iSlot = iSlot;
-	p.steam64 = g_Players[iSlot].steam64;
-	V_snprintf(p.text, sizeof(p.text), "%s", text);
-	s_PendingSay.push_back(p);
-}
-
-void Commands_OnDisconnect(int iSlot)
-{
-	ClearPendingReset(iSlot);
-}
-
-static void HandlePendingSay(int iSlot, const char* text)
-{
-	if (!Commands_IsAwaitingResetConfirm(iSlot))
-		return;
-
-	ClearPendingReset(iSlot);
-	if (IsResetConfirm(text))
-		ExecuteResetStats(iSlot);
-	else
-		LRPrintPhrase(iSlot, "ResetStatsCancelled");
-}
-
-void Commands_QueueChat(int iSlot, const char* text)
-{
-	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS)
-		return;
-
-	PendingCmd p;
-	p.iSlot = iSlot;
-	p.steam64 = g_Players[iSlot].steam64;
-	V_snprintf(p.text, sizeof(p.text), "%s", text);
-	s_Pending.push_back(p);
-}
-
-void Commands_ProcessQueue()
-{
-	if (!s_PendingSay.empty())
-	{
-		std::vector<PendingSay> sayBatch;
-		sayBatch.swap(s_PendingSay);
-
-		for (const PendingSay& p : sayBatch)
-		{
-			if (g_Players[p.iSlot].steam64 != p.steam64)
-				continue;
-			HandlePendingSay(p.iSlot, p.text);
-		}
-	}
-
-	if (s_Pending.empty())
-		return;
-
-	// Take a copy: a command may queue more work (or a player may disconnect).
-	std::vector<PendingCmd> batch;
-	batch.swap(s_Pending);
-
-	for (const PendingCmd& p : batch)
-	{
-		if (g_Players[p.iSlot].steam64 != p.steam64)
-			continue; // player left, slot reused
-		RunChatCommand(p.iSlot, p.text);
-	}
-}
-
-// ---------------------------------------------------------------------------
-// server console commands (integration surface for C# plugins / the website)
-// ---------------------------------------------------------------------------
-
-CON_COMMAND_F(lr_admin_bypass, "lr_admin_bypass <0|1> — allow lr_exp/GiveExp to bypass stat restrictions", FCVAR_GAMEDLL)
+CON_COMMAND_F(lr_tab_refresh, "lr_tab_refresh <slot|steamid64> — force TAB re-apply", FCVAR_GAMEDLL)
 {
 	if (args.ArgC() < 2)
 	{
-		Msg("lr_admin_bypass is %d\n", g_bAdminExpBypass ? 1 : 0);
+		Msg("Usage: lr_tab_refresh <slot|steamid64>\n");
 		return;
 	}
 
-	g_bAdminExpBypass = atoi(args[1]) != 0;
+	int iSlot = ResolveTabSlot(args[1]);
+	if (iSlot < 0 || iSlot >= LR_MAXPLAYERS || !g_Players[iSlot].loaded)
+	{
+		Msg("[LR] lr_tab_refresh: player not online/loaded (%s)\n", args[1]);
+		return;
+	}
+
+	Tab_RefreshPlayer(iSlot);
+	Msg("[LR] lr_tab_refresh slot=%d\n", iSlot);
 }
 
-CON_COMMAND_F(lr_exp, "lr_exp <steamid64> <give|take|set> <amount>", FCVAR_GAMEDLL)
-{
-	if (args.ArgC() < 4)
-	{
-		Msg("Usage: lr_exp <steamid64> <give|take|set> <amount>\n");
-		return;
-	}
-
-	uint64_t steam64 = strtoull(args[1], nullptr, 10);
-	int amount = atoi(args[3]);
-	const char* mode = args[2];
-
-	int iSlot = FindSlotBySteam64(steam64);
-	if (iSlot >= 0 && g_Players[iSlot].loaded)
-	{
-		int delta = 0;
-		if (!V_stricmp(mode, "give"))
-			delta = amount;
-		else if (!V_stricmp(mode, "take"))
-			delta = -amount;
-		else if (!V_stricmp(mode, "set"))
-			delta = amount - g_Players[iSlot].st.exp;
-		else
-		{
-			Msg("[LR] unknown mode: %s\n", mode);
-			return;
-		}
-
-		// ChangeExp refuses players who are not fully authenticated yet — do not
-		// report success in that case, the caller would record a phantom grant.
-		if (!ChangeExp(iSlot, delta, delta >= 0 ? "AdminGive" : "AdminTake", g_bAdminExpBypass))
-		{
-			Msg("[LR] %llu is online but not ready yet (still loading / not authenticated), nothing changed\n",
-				(unsigned long long)steam64);
-			return;
-		}
-
-		if (g_Cfg.saveMode)
-			SavePlayer(iSlot);
-		Msg("[LR] %llu exp is now %i\n", (unsigned long long)steam64, g_Players[iSlot].st.exp);
-		return;
-	}
-
-	// offline player: apply directly in the DB (level column syncs on next join)
-	if (!g_bCoreReady)
-	{
-		Msg("[LR] core is not ready\n");
-		return;
-	}
-
-	int expMode = !V_stricmp(mode, "give") ? 1 : (!V_stricmp(mode, "take") ? -1 : 0);
-	if (V_stricmp(mode, "give") && V_stricmp(mode, "take") && V_stricmp(mode, "set"))
-	{
-		Msg("[LR] unknown mode: %s\n", mode);
-		return;
-	}
-
-	char q[256];
-	V_snprintf(q, sizeof(q), "SELECT `rank`, `value` FROM `%s` WHERE `steamid64` = %llu LIMIT 1;",
-		g_Cfg.tableName, (unsigned long long)steam64);
-	DB_Query(q, [steam64, amount, expMode](const DBResult& r) {
-		if (!r.ok)
-		{
-			Msg("[LR] lr_exp db error: %s\n", r.error.c_str());
-			return;
-		}
-		if (!r.RowCount())
-		{
-			Msg("[LR] lr_exp: steamid64 %llu not found in db\n", (unsigned long long)steam64);
-			return;
-		}
-
-		int rankCount = (int)g_Cfg.ranksExp.size();
-		int level = r.GetInt(0, 0);
-		int exp = r.GetInt(0, 1);
-		if (level < 1) level = 1;
-		if (level > rankCount) level = rankCount;
-
-		if (expMode > 0)
-			exp += amount;
-		else if (expMode < 0)
-			exp -= amount;
-		else
-			exp = amount;
-		NormalizeRankState(level, exp);
-
-		char q2[384];
-		V_snprintf(q2, sizeof(q2),
-			"UPDATE `%s` SET `rank` = %i, `value` = %i WHERE `steamid64` = %llu;",
-			g_Cfg.tableName, level, exp, (unsigned long long)steam64);
-		DB_Query(q2, [steam64](const DBResult& r2) {
-			if (!r2.ok)
-				Msg("[LR] lr_exp db error: %s\n", r2.error.c_str());
-			else
-				Msg("[LR] lr_exp: updated offline player %llu\n", (unsigned long long)steam64);
-		});
-	});
-}
-
-CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — предпросмотр TAB-бейджа (0 = снять)", FCVAR_GAMEDLL)
+CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — preview TAB badge (0 = clear)", FCVAR_GAMEDLL)
 {
 	if (args.ArgC() < 3)
 	{
@@ -489,7 +85,7 @@ CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — предпрос
 	int badge = atoi(args[2]);
 	if (badge < 0 || badge > 999999999)
 	{
-		Msg("[LR] badge value must be 0..999999999 (skillgroup ID)\n");
+		Msg("[LR] badge value must be 0..999999999\n");
 		return;
 	}
 
@@ -505,135 +101,14 @@ CON_COMMAND_F(lr_tab_test, "lr_tab_test <steamid64> <value> — предпрос
 	g_Players[iSlot].revealSent = false;
 	CGlobalVars* gv = GetGlobals();
 	float now = gv ? gv->curtime : 0.0f;
-	// Preview immediately: skip mount delay for lr_tab_test.
 	g_Players[iSlot].tabIconsAt = now;
 	g_Players[iSlot].tabRefreshUntil = now + g_TabCfg.iconsRefresh;
-	if (badge)
-		Msg("[LR] tab override for %llu: %i\n", (unsigned long long)steam64, badge);
-	else
-		Msg("[LR] tab override for %llu: off\n", (unsigned long long)steam64);
+
+	Msg("[LR] tab_test steam=%llu slot=%d badge=%d\n",
+		(unsigned long long)steam64, iSlot, badge);
 }
 
-CON_COMMAND_F(lr_reset, "lr_reset <all|exp|stats> — wipe database statistics", FCVAR_GAMEDLL)
-{
-	if (args.ArgC() < 2)
-	{
-		Msg("Usage: lr_reset <all|exp|stats>\n");
-		return;
-	}
-	if (!g_bCoreReady)
-	{
-		Msg("[LR] core is not ready\n");
-		return;
-	}
-
-	char q[512];
-	const char* mode = args[1];
-	if (!V_stricmp(mode, "all"))
-		V_snprintf(q, sizeof(q), "TRUNCATE TABLE `%s`;", g_Cfg.tableName);
-	else if (!V_stricmp(mode, "exp"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `value` = 0, `rank` = 1;",
-			g_Cfg.tableName);
-	else if (!V_stricmp(mode, "stats"))
-		V_snprintf(q, sizeof(q), "UPDATE `%s` SET `kills` = 0, `deaths` = 0, `shoots` = 0, `hits` = 0, "
-			"`headshots` = 0, `assists` = 0, `round_win` = 0, `round_lose` = 0;", g_Cfg.tableName);
-	else
-	{
-		Msg("[LR] unknown reset mode: %s\n", mode);
-		return;
-	}
-
-	DB_Query(q, [](const DBResult& r) {
-		if (!r.ok)
-		{
-			Msg("[LR] lr_reset failed: %s\n", r.error.c_str());
-			return;
-		}
-		// Reload everyone who is online. flushCurrent = false: the table was
-		// just wiped, writing the pre-reset values back would undo it.
-		for (int i = 0; i < LR_MAXPLAYERS; i++)
-		{
-			if (g_Players[i].steam64)
-				LoadPlayer(i, g_Players[i].steam64, false);
-		}
-		Msg("[LR] database statistics cleared\n");
-	});
-}
-
-CON_COMMAND_F(lr_reload, "Reload lr_core configs", FCVAR_GAMEDLL)
-{
-	if (!LoadAllConfigs())
-	{
-		Msg("[LR] config reload FAILED, check warnings above\n");
-		return;
-	}
-
-	MenuLayout_Reload();
-
-	// The Ranks list may have changed length: re-derive every level so nothing
-	// keeps an index into the old, longer list.
-	CGlobalVars* gv = GetGlobals();
-	float now = gv ? gv->curtime : 0.0f;
-	for (int i = 0; i < LR_MAXPLAYERS; i++)
-	{
-		if (g_Players[i].loaded)
-		{
-			CheckRank(i, false);
-			g_Players[i].revealSent = false;
-			g_Players[i].tabIconsApplied = false;
-			g_Players[i].tabIconsAt = now + g_TabCfg.iconsDelay;
-			g_Players[i].tabRefreshUntil = g_Players[i].tabIconsAt + g_TabCfg.iconsRefresh;
-		}
-	}
-
-	Msg("[LR] configs reloaded\n");
-}
-
-CON_COMMAND_F(lr_status, "lr_core status", FCVAR_GAMEDLL)
-{
-	int loaded = 0, online = 0;
-	for (int i = 0; i < LR_MAXPLAYERS; i++)
-	{
-		if (g_Players[i].steam64)
-			online++;
-		if (g_Players[i].loaded)
-			loaded++;
-	}
-	int menuBytes = 0;
-	bool menuLoaded = false;
-	char menuPath[512] = {};
-	MenuLayout_GetStatus(menuBytes, menuLoaded, menuPath, sizeof(menuPath));
-
-	Msg("[LR] ready=%d db_connected=%d players_online=%d players_loaded=%d db_players=%d allow_stats=%d custom_round=%d menu_selector=%d menu_json_bytes=%d menu_json_path=%s\n",
-		g_bCoreReady, DB_IsConnected(), online, loaded, g_iDBCountPlayers, g_bAllowStatistic, g_bCustomRoundActive,
-		menuLoaded ? 1 : 0, menuBytes, menuPath[0] ? menuPath : "(not found)");
-
-	if (args.ArgC() >= 2)
-	{
-		uint64_t steam64 = strtoull(args[1], nullptr, 10);
-		if (steam64)
-		{
-			int iSlot = FindSlotBySteam64(steam64);
-			LRMenuLayout layout = MenuLayout_GetTypeForSteam64(steam64);
-			const char* name = "html";
-			if (layout == LR_MENU_CHAT)
-				name = "chat";
-			else if (layout == LR_MENU_WASD)
-				name = "wasd";
-
-			int optCount = 0, infoCount = 0;
-			bool wasdActive = false;
-			if (iSlot >= 0)
-				MenuLayout_GetWasdDebug(iSlot, optCount, infoCount, wasdActive);
-
-			Msg("[LR] menu_layout steam64=%llu json_type=%i(%s) slot=%i wasd_active=%d wasd_options=%d wasd_info=%d\n",
-				(unsigned long long)steam64, (int)layout, name, iSlot, wasdActive ? 1 : 0,
-				optCount, infoCount);
-		}
-	}
-}
-
-CON_COMMAND_F(lr_customround, "lr_customround <0|1> — VIP custom round state (blocks XP when lr_block_customround=1)", FCVAR_GAMEDLL)
+CON_COMMAND_F(lr_customround, "lr_customround <0|1> — VIP custom round (LevelsRanks XP gate)", FCVAR_GAMEDLL)
 {
 	if (args.ArgC() < 2)
 	{
@@ -641,129 +116,44 @@ CON_COMMAND_F(lr_customround, "lr_customround <0|1> — VIP custom round state (
 		return;
 	}
 
-	int value = atoi(args[1]);
-	g_bCustomRoundActive = value != 0;
-	CheckAllowStatistic(false);
-	Msg("[LR] custom_round=%d allow_stats=%d\n", g_bCustomRoundActive ? 1 : 0, g_bAllowStatistic);
+	g_bCustomRoundActive = atoi(args[1]) != 0;
+	g_cvLrCustomRoundActive.Set(g_bCustomRoundActive);
+	Msg("[LR] custom_round=%d\n", g_bCustomRoundActive ? 1 : 0);
 }
 
-// ---------------------------------------------------------------------------
-// lr_stats: one JSON line per player, for the C# plugins and the website.
-// Works for offline players too (read straight from the DB).
-// ---------------------------------------------------------------------------
-
-static std::string JsonEscape(const char* in)
+CON_COMMAND_F(lr_status, "lr_core TAB status", FCVAR_GAMEDLL)
 {
-	std::string out;
-	for (const char* c = in; *c; c++)
+	int loaded = 0;
+	for (int i = 0; i < LR_MAXPLAYERS; i++)
 	{
-		switch (*c)
-		{
-			case '"':  out += "\\\""; break;
-			case '\\': out += "\\\\"; break;
-			case '\n': out += "\\n"; break;
-			case '\r': out += "\\r"; break;
-			case '\t': out += "\\t"; break;
-			default:
-				if ((unsigned char)*c < 0x20)
-					continue; // drop control chars, keep utf-8 bytes as-is
-				out += *c;
-		}
+		if (g_Players[i].loaded)
+			loaded++;
 	}
-	return out;
+
+	Msg("[LR] TAB-only ready=%d players_loaded=%d custom_round=%d\n",
+		g_bCoreReady ? 1 : 0, loaded, g_bCustomRoundActive ? 1 : 0);
+	Msg("[LR] tab enabled=%d mode=%s type=%d wins=%d workshop_id=%s icons_delay=%.0f values=%d\n",
+		g_TabCfg.enabled ? 1 : 0,
+		g_TabCfg.mode == 1 ? "persona" : "competitive",
+		g_TabCfg.type, g_TabCfg.wins,
+		g_TabCfg.workshopId[0] ? g_TabCfg.workshopId : "(empty)",
+		g_TabCfg.iconsDelay, (int)g_TabCfg.values.size());
 }
 
-static void PrintStatsJson(uint64_t steam64, const char* name, int level, int exp, int coins,
-	int posTop, int total, int kills, int deaths, int headshots, int assists,
-	int64_t playtime, int64_t sessionTime, bool online)
+CON_COMMAND_F(lr_reload, "Reload tab.ini", FCVAR_GAMEDLL)
 {
-	Msg("[LR_STATS] {\"steamid64\":\"%llu\",\"name\":\"%s\",\"level\":%i,\"exp\":%i,\"coins\":%i,"
-		"\"pos_top\":%i,\"total_players\":%i,\"kills\":%i,\"deaths\":%i,\"headshots\":%i,"
-		"\"assists\":%i,\"kd\":%.2f,\"playtime\":%lld,\"session_time\":%lld,\"online\":%s}\n",
-		(unsigned long long)steam64, JsonEscape(name).c_str(), level, exp, coins,
-		posTop, total, kills, deaths, headshots, assists, StatKD(kills, deaths),
-		(long long)playtime, (long long)sessionTime, online ? "true" : "false");
-}
+	LoadTabConfig();
 
-CON_COMMAND_F(lr_stats, "lr_stats <steamid64> — player stats as JSON (top place, kills, hs, deaths, kd, playtime)", FCVAR_GAMEDLL)
-{
-	if (args.ArgC() < 2)
+	CGlobalVars* gv = GetGlobals();
+	float now = gv ? gv->curtime : 0.0f;
+	for (int i = 0; i < LR_MAXPLAYERS; i++)
 	{
-		Msg("Usage: lr_stats <steamid64>\n");
-		return;
+		if (!g_Players[i].loaded)
+			continue;
+		g_Players[i].revealSent = false;
+		g_Players[i].tabIconsApplied = false;
+		g_Players[i].tabIconsAt = now + g_TabCfg.iconsDelay;
+		g_Players[i].tabRefreshUntil = g_Players[i].tabIconsAt + g_TabCfg.iconsRefresh;
 	}
-
-	uint64_t steam64 = strtoull(args[1], nullptr, 10);
-	if (!steam64)
-	{
-		Msg("[LR] invalid steamid64: %s\n", args[1]);
-		return;
-	}
-	if (!g_bCoreReady)
-	{
-		Msg("[LR] core is not ready\n");
-		return;
-	}
-
-	int iSlot = FindSlotBySteam64(steam64);
-
-	// Online: in-memory totals are fresher than the DB; only the top position
-	// needs a round-trip (it moves as other players earn exp).
-	if (iSlot >= 0 && g_Players[iSlot].loaded)
-	{
-		char q[512];
-		V_snprintf(q, sizeof(q),
-			"SELECT (SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > %i OR (`rank` = %i AND `value` >= %i)) AND %s), "
-			"(SELECT COUNT(`steam`) FROM `%s` WHERE %s);",
-			g_Cfg.tableName, g_Players[iSlot].level, g_Players[iSlot].level,
-			g_Players[iSlot].st.exp, LR_SQL_LASTCONNECT_ACTIVE, g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE);
-
-		DB_Query(q, [iSlot, steam64, gen = PlayerGeneration(iSlot)](const DBResult& r) {
-			PlayerInfo& p = g_Players[iSlot];
-			if (p.steam64 != steam64 || !p.loaded || PlayerGeneration(iSlot) != gen)
-				return; // left while the query was in flight
-
-			int posTop = (r.ok && r.RowCount()) ? r.GetInt(0, 0) : p.posTop;
-			int total = (r.ok && r.RowCount()) ? r.GetInt(0, 1) : g_iDBCountPlayers;
-			p.posTop = posTop;
-
-			PrintStatsJson(p.steam64, p.name, p.level, p.st.exp, p.coins, posTop, total,
-				p.st.kills, p.st.deaths, p.st.headshots, p.st.assists,
-				TotalPlaytime(iSlot), SessionTime(iSlot), true);
-		});
-		return;
-	}
-
-	// Offline: everything from the DB.
-	char q[1024];
-	V_snprintf(q, sizeof(q),
-		"SELECT `name`, `rank`, `value`, `coins`, `kills`, `deaths`, `headshots`, `assists`, "
-		"`playtime_sec_norm`, `playtime_h`, `playtime_m`, `playtime_s`, `playtime`, "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE (`rank` > `p`.`rank` OR (`rank` = `p`.`rank` AND `value` >= `p`.`value`)) AND %s), "
-		"(SELECT COUNT(`steam`) FROM `%s` WHERE %s) "
-		"FROM `%s` `p` WHERE `steamid64` = %llu LIMIT 1;",
-		g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE,
-		g_Cfg.tableName, LR_SQL_LASTCONNECT_ACTIVE,
-		g_Cfg.tableName, (unsigned long long)steam64);
-
-	DB_Query(q, [steam64](const DBResult& r) {
-		if (!r.ok)
-		{
-			Msg("[LR] lr_stats db error: %s\n", r.error.c_str());
-			return;
-		}
-		if (!r.RowCount())
-		{
-			Msg("[LR_STATS] {\"steamid64\":\"%llu\",\"found\":false}\n", (unsigned long long)steam64);
-			return;
-		}
-
-		int64_t playtime = DB_PlaytimeFromNormalized(
-			r.GetInt64(0, 8), r.GetInt(0, 9), r.GetInt(0, 10), r.GetInt(0, 11), r.GetInt64(0, 12));
-
-		PrintStatsJson(steam64, r.Get(0, 0), r.GetInt(0, 1), r.GetInt(0, 2), r.GetInt(0, 3),
-			r.GetInt(0, 13), r.GetInt(0, 14),
-			r.GetInt(0, 4), r.GetInt(0, 5), r.GetInt(0, 6), r.GetInt(0, 7),
-			playtime, 0, false);
-	});
+	Msg("[LR] tab.ini reloaded\n");
 }

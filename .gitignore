@@ -7,9 +7,6 @@ build/
 *.pb.h
 ranks/
 bin/
-# secrets — never commit real DB credentials
-configs/database.ini
-
 # editor / os
 .vscode/
 .idea/
