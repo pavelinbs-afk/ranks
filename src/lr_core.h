@@ -31,7 +31,7 @@ public:
 	const char* GetDescription() override	{ return "Levels Ranks TAB icons only (XP in LevelsRanks C#)"; }
 	const char* GetURL() override			{ return ""; }
 	const char* GetLicense() override		{ return "GPL"; }
-	const char* GetVersion() override		{ return "3.0.0-tab"; }
+	const char* GetVersion() override		{ return "3.0.1-tab"; }
 	const char* GetDate() override			{ return __DATE__; }
 	const char* GetLogTag() override		{ return "LR"; }
 

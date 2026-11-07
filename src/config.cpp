@@ -39,18 +39,25 @@ void LoadTabConfig()
 		g_TabCfg.revealInterval = 0.0f;
 
 	g_TabCfg.values.clear();
-	KeyValues* values = kv->FindKey("tab_values", false);
-	if (values)
+	KeyValues* levels = kv->FindKey("Levels", false);
+	if (levels)
 	{
-		for (KeyValues* v = values->GetFirstSubKey(); v; v = v->GetNextKey())
-			g_TabCfg.values.push_back(v->GetInt(nullptr, 0));
+		FOR_EACH_VALUE(levels, v)
+		{
+			int level = atoi(v->GetName());
+			if (level < 1 || level > 512)
+				continue;
+			if ((int)g_TabCfg.values.size() < level)
+				g_TabCfg.values.resize(level, 0);
+			g_TabCfg.values[level - 1] = v->GetInt(nullptr);
+		}
 	}
 
-	KeyValues* above = kv->FindKey("tab_above", false);
+	KeyValues* above = kv->FindKey("AboveMax", false);
 	if (above)
 	{
-		g_TabCfg.aboveType   = above->GetInt("type", g_TabCfg.type);
-		g_TabCfg.aboveValue  = above->GetInt("value", (int)g_TabCfg.values.size());
+		g_TabCfg.aboveType   = above->GetInt("tab_type", g_TabCfg.type);
+		g_TabCfg.aboveValue  = above->GetInt("value", 0);
 		g_TabCfg.aboveUseExp = above->GetInt("use_exp", 0) != 0;
 	}
 	else
@@ -59,7 +66,8 @@ void LoadTabConfig()
 		g_TabCfg.aboveValue = (int)g_TabCfg.values.size();
 	}
 
-	LR_Log("tab.ini loaded enabled=%d values=%d workshop=%s",
+	LR_Log("tab.ini loaded enabled=%d values=%d workshop=%s delay=%.0f wins=%d above=%d",
 		g_TabCfg.enabled ? 1 : 0, (int)g_TabCfg.values.size(),
-		g_TabCfg.workshopId[0] ? g_TabCfg.workshopId : "(empty)");
+		g_TabCfg.workshopId[0] ? g_TabCfg.workshopId : "(empty)",
+		g_TabCfg.iconsDelay, g_TabCfg.wins, g_TabCfg.aboveValue);
 }
